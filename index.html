@@ -863,6 +863,9 @@ a { color: inherit; text-decoration: none; }
         <option value="cash">現金</option>
         <option value="credit">クレジットカード</option>
         <option value="emoney">電子マネー・QR決済</option>
+        <option value="nisa">NISA</option>
+        <option value="investment">その他投資</option>
+        <option value="fx">FX</option>
       </select>
     </div>
     <div class="form-group">
@@ -898,6 +901,97 @@ a { color: inherit; text-decoration: none; }
 }
 .color-circle.selected { border-color: var(--charcoal); }
 </style>
+
+<!-- ============================================================
+     口座編集モーダル
+     ============================================================ -->
+<div class="modal-overlay" id="editAccountModal" onclick="closeModalOnOverlay(event)">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="section-title" style="margin-bottom:16px">口座を編集</div>
+
+    <div class="form-group">
+      <label class="form-label">口座名</label>
+      <input class="form-control" type="text" id="editAccName" placeholder="例：楽天銀行">
+    </div>
+    <div class="form-group">
+      <label class="form-label">種別</label>
+      <select class="form-control" id="editAccType">
+        <option value="bank">銀行口座</option>
+        <option value="cash">現金</option>
+        <option value="credit">クレジットカード</option>
+        <option value="emoney">電子マネー・QR決済</option>
+        <option value="nisa">NISA</option>
+        <option value="investment">その他投資</option>
+        <option value="fx">FX</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">
+        現在の残高（初期残高）
+        <span style="font-size:.7rem;color:var(--muted);font-weight:400;margin-left:6px">
+          ※ 過去の取引を入力済みの場合は「逆算した残高」を入れてください
+        </span>
+      </label>
+      <div class="amount-input-wrap">
+        <span class="amount-currency">¥</span>
+        <input class="form-control" type="number" id="editAccBalance"
+               placeholder="0" inputmode="numeric" style="padding-left:28px">
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">カラー</label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap" id="editColorPicker">
+        <div class="color-circle edit-color" style="background:#A8C3A0" data-color="#A8C3A0"></div>
+        <div class="color-circle edit-color" style="background:#E0A899" data-color="#E0A899"></div>
+        <div class="color-circle edit-color" style="background:#89B4CC" data-color="#89B4CC"></div>
+        <div class="color-circle edit-color" style="background:#C9A8D4" data-color="#C9A8D4"></div>
+        <div class="color-circle edit-color" style="background:#E8C876" data-color="#E8C876"></div>
+        <div class="color-circle edit-color" style="background:#B05050" data-color="#B05050"></div>
+        <div class="color-circle edit-color" style="background:#7BA7BC" data-color="#7BA7BC"></div>
+        <div class="color-circle edit-color" style="background:#8BC34A" data-color="#8BC34A"></div>
+      </div>
+    </div>
+
+    <!-- 逆算ヘルパー（投資口座向け） -->
+    <div id="calcHelperSection" style="display:none;
+         background:var(--stone);border-radius:var(--radius-sm);padding:12px;margin-bottom:14px">
+      <div style="font-size:.75rem;font-weight:600;color:var(--muted);margin-bottom:8px">
+        💡 残高の逆算ヘルパー
+      </div>
+      <div style="font-size:.78rem;color:var(--charcoal);line-height:1.8">
+        <div style="display:flex;justify-content:space-between">
+          <span>今日の実際の残高</span>
+          <input type="number" id="helperCurrentBalance" placeholder="0"
+                 oninput="calcInitialBalance()"
+                 style="width:120px;text-align:right;border:1px solid var(--stone);
+                        border-radius:4px;padding:2px 6px;font-size:.78rem">
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-top:4px">
+          <span>入力済み収入合計</span>
+          <span id="helperIncome" style="font-weight:600">¥0</span>
+        </div>
+        <div style="display:flex;justify-content:space-between">
+          <span>入力済み支出合計</span>
+          <span id="helperExpense" style="font-weight:600">¥0</span>
+        </div>
+        <div style="border-top:1px solid var(--stone);margin-top:6px;padding-top:6px;
+                    display:flex;justify-content:space-between;font-weight:700">
+          <span>設定すべき初期残高</span>
+          <span id="helperResult" style="color:var(--sage-dark)">¥0</span>
+        </div>
+        <button onclick="applyCalculatedBalance()"
+                style="width:100%;margin-top:8px;padding:6px;background:var(--sage-dark);
+                       color:white;border-radius:6px;font-size:.78rem;font-weight:600">
+          この金額を設定する
+        </button>
+      </div>
+    </div>
+
+    <input type="hidden" id="editAccId">
+    <button class="submit-btn" onclick="updateAccount()">更新する</button>
+  </div>
+</div>
 
 <!-- ============================================================
      ボトムナビゲーション
@@ -1424,8 +1518,13 @@ function renderAccountSettings() {
           <div class="account-type-label">${accountTypeLabel(acc.type)}</div>
         </div>
       </div>
-      <button onclick="deleteAccount('${acc.id}')"
-              style="color:var(--red);font-size:.8rem;padding:4px 8px">削除</button>
+      <div style="display:flex;gap:6px">
+        <button onclick="openEditAccountModal('${acc.id}')"
+                style="color:var(--sage-dark);font-size:.8rem;padding:4px 8px;
+                       background:var(--sage-light);border-radius:6px">編集</button>
+        <button onclick="deleteAccount('${acc.id}')"
+                style="color:var(--red);font-size:.8rem;padding:4px 8px">削除</button>
+      </div>
     </div>`).join('');
 }
 
@@ -1542,7 +1641,7 @@ function getCatInfo(label, type) {
 }
 
 function accountTypeLabel(type) {
-  return { bank:'銀行口座', cash:'現金', credit:'クレジットカード', emoney:'電子マネー・QR決済' }[type] || type;
+  return { bank:'銀行口座', cash:'現金', credit:'クレジットカード', emoney:'電子マネー・QR決済', nisa:'NISA', investment:'その他投資', fx:'FX' }[type] || type;
 }
 
 function formatMoney(n) {
@@ -1777,6 +1876,102 @@ renderHome = function() {
   `;
   document.head.appendChild(style);
 })();
+
+// ============================================================
+// 口座編集機能
+// ============================================================
+
+let editingAccountColor = '#A8C3A0';
+
+// 編集モーダルを開く
+function openEditAccountModal(accId) {
+  const acc = (appData?.accounts || []).find(a => a.id === accId);
+  if (!acc) return;
+
+  document.getElementById('editAccId').value      = accId;
+  document.getElementById('editAccName').value    = acc.name || '';
+  document.getElementById('editAccType').value    = acc.type || 'bank';
+  document.getElementById('editAccBalance').value = acc.initialBalance || 0;
+
+  editingAccountColor = acc.color || '#A8C3A0';
+  document.querySelectorAll('.edit-color').forEach(c => {
+    c.classList.toggle('selected', c.dataset.color === editingAccountColor);
+  });
+
+  // 編集カラーピッカーのクリックイベント
+  document.querySelectorAll('.edit-color').forEach(c => {
+    c.onclick = () => {
+      editingAccountColor = c.dataset.color;
+      document.querySelectorAll('.edit-color').forEach(cc => cc.classList.remove('selected'));
+      c.classList.add('selected');
+    };
+  });
+
+  // 逆算ヘルパー：この口座の収入・支出合計を集計して表示
+  const txs     = appData?.transactions || [];
+  const income  = txs.filter(t => t.accountId === accId && t.type === 'income')
+                     .reduce((s, t) => s + t.amount, 0);
+  const expense = txs.filter(t => t.accountId === accId && t.type === 'expense')
+                     .reduce((s, t) => s + t.amount, 0);
+  document.getElementById('helperIncome').textContent  = formatMoney(income);
+  document.getElementById('helperExpense').textContent = formatMoney(expense);
+  document.getElementById('helperCurrentBalance').value = '';
+  document.getElementById('helperResult').textContent  = '---';
+
+  // 取引が1件でもあれば逆算ヘルパーを表示
+  const hasTx = txs.some(t => t.accountId === accId);
+  document.getElementById('calcHelperSection').style.display = hasTx ? 'block' : 'none';
+
+  document.getElementById('editAccountModal').classList.add('open');
+}
+
+// 逆算ヘルパーの計算
+function calcInitialBalance() {
+  const accId   = document.getElementById('editAccId').value;
+  const txs     = appData?.transactions || [];
+  const income  = txs.filter(t => t.accountId === accId && t.type === 'income')
+                     .reduce((s, t) => s + t.amount, 0);
+  const expense = txs.filter(t => t.accountId === accId && t.type === 'expense')
+                     .reduce((s, t) => s + t.amount, 0);
+  const current = parseInt(document.getElementById('helperCurrentBalance').value) || 0;
+  // 初期残高 = 今日の残高 - 収入 + 支出
+  const initial = current - income + expense;
+  document.getElementById('helperResult').textContent = formatMoney(initial);
+  document.getElementById('helperResult').dataset.value = initial;
+}
+
+// 逆算結果を残高フィールドに反映
+function applyCalculatedBalance() {
+  const val = document.getElementById('helperResult').dataset.value;
+  if (val !== undefined) {
+    document.getElementById('editAccBalance').value = val;
+    showToast('初期残高に反映しました', 'success');
+  }
+}
+
+// 口座を更新
+async function updateAccount() {
+  const id      = document.getElementById('editAccId').value;
+  const name    = document.getElementById('editAccName').value.trim();
+  const type    = document.getElementById('editAccType').value;
+  const balance = parseInt(document.getElementById('editAccBalance').value) || 0;
+
+  if (!name) { showToast('口座名を入力してください', 'error'); return; }
+
+  const account = { id, name, type, color: editingAccountColor, initialBalance: balance };
+  const result  = await postToGas({ action: 'saveAccount', account });
+
+  if (result?.ok) {
+    const idx = appData.accounts.findIndex(a => a.id === id);
+    if (idx !== -1) appData.accounts[idx] = { ...appData.accounts[idx], ...account };
+    renderAccountList();
+    renderAccountSelects();
+    renderAccountSettings();
+    document.getElementById('editAccountModal').classList.remove('open');
+    showToast('口座を更新しました ✓', 'success');
+    renderHome();
+  }
+}
 
 function setSyncState(state) {
   const dot   = document.getElementById('syncDot');
