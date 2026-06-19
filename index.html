@@ -771,6 +771,66 @@ a { color: inherit; text-decoration: none; }
 
 
 <!-- ============================================================
+     カテゴリ追加・編集モーダル
+     ============================================================ -->
+<div class="modal-overlay" id="catModal" onclick="closeModalOnOverlay(event)">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="section-title" style="margin-bottom:16px">
+      <span id="catModalTitle">カテゴリを追加</span>
+      <button onclick="document.getElementById('catModal').classList.remove('open')"
+              style="font-size:.8rem;color:var(--muted)">閉じる</button>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">カテゴリ名</label>
+      <input class="form-control" type="text" id="catName" placeholder="例：ペット費、外食費、雑費">
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">アイコン（絵文字）</label>
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
+        <div id="catIconPreview"
+             style="width:48px;height:48px;border-radius:var(--radius-sm);
+                    background:var(--stone);display:flex;align-items:center;
+                    justify-content:center;font-size:1.6rem;flex-shrink:0">💫</div>
+        <input class="form-control" type="text" id="catIconInput"
+               placeholder="絵文字を入力（例：🐾）" maxlength="2"
+               oninput="document.getElementById('catIconPreview').textContent=this.value||'💫'">
+      </div>
+      <!-- よく使う絵文字ショートカット -->
+      <div style="display:flex;flex-wrap:wrap;gap:6px">
+        <span style="font-size:.68rem;color:var(--muted);width:100%;margin-bottom:2px">よく使うアイコン</span>
+        <button onclick="selectCatIcon('🐾')" style="width:36px;height:36px;border-radius:6px;background:var(--stone);font-size:1.2rem;display:flex;align-items:center;justify-content:center">🐾</button>
+        <button onclick="selectCatIcon('🏠')" style="width:36px;height:36px;border-radius:6px;background:var(--stone);font-size:1.2rem;display:flex;align-items:center;justify-content:center">🏠</button>
+        <button onclick="selectCatIcon('🚗')" style="width:36px;height:36px;border-radius:6px;background:var(--stone);font-size:1.2rem;display:flex;align-items:center;justify-content:center">🚗</button>
+        <button onclick="selectCatIcon('✈️')" style="width:36px;height:36px;border-radius:6px;background:var(--stone);font-size:1.2rem;display:flex;align-items:center;justify-content:center">✈️</button>
+        <button onclick="selectCatIcon('🎀')" style="width:36px;height:36px;border-radius:6px;background:var(--stone);font-size:1.2rem;display:flex;align-items:center;justify-content:center">🎀</button>
+        <button onclick="selectCatIcon('🍺')" style="width:36px;height:36px;border-radius:6px;background:var(--stone);font-size:1.2rem;display:flex;align-items:center;justify-content:center">🍺</button>
+        <button onclick="selectCatIcon('💄')" style="width:36px;height:36px;border-radius:6px;background:var(--stone);font-size:1.2rem;display:flex;align-items:center;justify-content:center">💄</button>
+        <button onclick="selectCatIcon('🎵')" style="width:36px;height:36px;border-radius:6px;background:var(--stone);font-size:1.2rem;display:flex;align-items:center;justify-content:center">🎵</button>
+        <button onclick="selectCatIcon('🏋️')" style="width:36px;height:36px;border-radius:6px;background:var(--stone);font-size:1.2rem;display:flex;align-items:center;justify-content:center">🏋️</button>
+        <button onclick="selectCatIcon('🌿')" style="width:36px;height:36px;border-radius:6px;background:var(--stone);font-size:1.2rem;display:flex;align-items:center;justify-content:center">🌿</button>
+        <button onclick="selectCatIcon('👶')" style="width:36px;height:36px;border-radius:6px;background:var(--stone);font-size:1.2rem;display:flex;align-items:center;justify-content:center">👶</button>
+        <button onclick="selectCatIcon('🐶')" style="width:36px;height:36px;border-radius:6px;background:var(--stone);font-size:1.2rem;display:flex;align-items:center;justify-content:center">🐶</button>
+        <button onclick="selectCatIcon('🎓')" style="width:36px;height:36px;border-radius:6px;background:var(--stone);font-size:1.2rem;display:flex;align-items:center;justify-content:center">🎓</button>
+        <button onclick="selectCatIcon('💡')" style="width:36px;height:36px;border-radius:6px;background:var(--stone);font-size:1.2rem;display:flex;align-items:center;justify-content:center">💡</button>
+        <button onclick="selectCatIcon('🏦')" style="width:36px;height:36px;border-radius:6px;background:var(--stone);font-size:1.2rem;display:flex;align-items:center;justify-content:center">🏦</button>
+        <button onclick="selectCatIcon('🎁')" style="width:36px;height:36px;border-radius:6px;background:var(--stone);font-size:1.2rem;display:flex;align-items:center;justify-content:center">🎁</button>
+        <button onclick="selectCatIcon('🛍️')" style="width:36px;height:36px;border-radius:6px;background:var(--stone);font-size:1.2rem;display:flex;align-items:center;justify-content:center">🛍️</button>
+        <button onclick="selectCatIcon('🍽️')" style="width:36px;height:36px;border-radius:6px;background:var(--stone);font-size:1.2rem;display:flex;align-items:center;justify-content:center">🍽️</button>
+        <button onclick="selectCatIcon('💈')" style="width:36px;height:36px;border-radius:6px;background:var(--stone);font-size:1.2rem;display:flex;align-items:center;justify-content:center">💈</button>
+        <button onclick="selectCatIcon('🎯')" style="width:36px;height:36px;border-radius:6px;background:var(--stone);font-size:1.2rem;display:flex;align-items:center;justify-content:center">🎯</button>
+      </div>
+    </div>
+
+    <input type="hidden" id="catEditKey">
+    <input type="hidden" id="catEditType">
+    <button class="submit-btn" onclick="saveCategory()">追加する</button>
+  </div>
+</div>
+
+<!-- ============================================================
      特別費追加モーダル
      ============================================================ -->
 <div class="modal-overlay" id="specialFeeModal" onclick="closeModalOnOverlay(event)">
@@ -1149,6 +1209,36 @@ a { color: inherit; text-decoration: none; }
     </div>
   </div>
 
+  <!-- ③ カテゴリ管理 -->
+  <div class="card">
+    <div class="card-title">カテゴリ管理</div>
+    <p style="font-size:.75rem;color:var(--muted);margin-bottom:12px;line-height:1.6">
+      カテゴリを追加・削除すると入力画面・テンプレートにも自動反映されます
+    </p>
+
+    <!-- タブ -->
+    <div class="type-tabs" style="margin-bottom:12px">
+      <button class="type-tab active expense" id="catTabExpense"
+              onclick="switchCatTab('expense')">支出カテゴリ</button>
+      <button class="type-tab income" id="catTabIncome"
+              onclick="switchCatTab('income')">収入カテゴリ</button>
+    </div>
+
+    <!-- 支出カテゴリ一覧 -->
+    <div id="catListExpense">
+      <div id="expenseCatList" style="margin-bottom:10px"></div>
+      <button class="submit-btn" style="background:var(--stone);color:var(--charcoal);margin-top:0"
+              onclick="openCatModal('expense')">＋ 支出カテゴリを追加</button>
+    </div>
+
+    <!-- 収入カテゴリ一覧 -->
+    <div id="catListIncome" style="display:none">
+      <div id="incomeCatList" style="margin-bottom:10px"></div>
+      <button class="submit-btn" style="background:var(--stone);color:var(--charcoal);margin-top:0"
+              onclick="openCatModal('income')">＋ 収入カテゴリを追加</button>
+    </div>
+  </div>
+
   <!-- ① 特別費プランナー -->
   <div class="card">
     <div class="card-title">特別費プランナー（積立管理）</div>
@@ -1376,7 +1466,7 @@ a { color: inherit; text-decoration: none; }
 // ============================================================
 // 定数・状態
 // ============================================================
-const CATEGORY_MAP = {
+let CATEGORY_MAP = {
   expense: [
     { key: 'food',      label: '食費',         icon: '🛒' },
     { key: 'daily',     label: '日用品',        icon: '🧴' },
@@ -1500,6 +1590,7 @@ async function loadDataFromGas() {
     const json = await gasJsonp({ action: 'getData' });
     if (json.ok) {
       appData = json.data;
+      loadCustomCategories();  // カスタムカテゴリをCATEGORY_MAPに反映
       renderHome();
       renderAccountSelects();
       renderAccountSettings();
@@ -2969,10 +3060,152 @@ function applyTemplate(tplId) {
 // 設定画面初期化（showScreen('settings') から呼ぶ）
 // ============================================================
 function initSettingsScreen() {
+  loadCustomCategories();
+  renderCategorySettings();
   renderSpecialFeeList();
   renderTemplateList();
   renderAccountSettings();
   loadSettingsLocal();
+}
+
+// ============================================================
+// カテゴリ管理
+// ============================================================
+
+let currentCatTab = 'expense';
+
+// カテゴリをGASのsettingsから読み込み・CATEGORY_MAPに反映
+function loadCustomCategories() {
+  const customCats = appData?.settings?.customCategories;
+  if (!customCats) return;
+  if (customCats.expense && customCats.expense.length) {
+    CATEGORY_MAP.expense = customCats.expense;
+  }
+  if (customCats.income && customCats.income.length) {
+    CATEGORY_MAP.income = customCats.income;
+  }
+}
+
+// 設定画面のカテゴリ一覧を描画
+function renderCategorySettings() {
+  renderCatList('expense');
+  renderCatList('income');
+}
+
+function renderCatList(type) {
+  const el   = document.getElementById(type === 'expense' ? 'expenseCatList' : 'incomeCatList');
+  const cats = CATEGORY_MAP[type] || [];
+
+  el.innerHTML = cats.map((cat, idx) => {
+    const isDefault = !!cat.key && !cat.key.startsWith('custom_');
+    return `
+      <div style="display:flex;align-items:center;gap:8px;padding:8px 0;
+                  border-bottom:1px solid var(--stone)">
+        <span style="font-size:1.3rem;width:32px;text-align:center">${cat.icon}</span>
+        <span style="flex:1;font-size:.88rem;font-weight:500">${esc(cat.label)}</span>
+        ${isDefault
+          ? '<span style="font-size:.65rem;color:var(--muted);padding:2px 6px;background:var(--stone);border-radius:99px">デフォルト</span>'
+          : `<button onclick="openCatModal('${type}','${cat.key}')"
+                     style="font-size:.72rem;color:var(--sage-dark);padding:3px 8px;
+                            background:var(--sage-light);border-radius:6px">編集</button>
+             <button onclick="deleteCategory('${type}','${cat.key}')"
+                     style="font-size:.72rem;color:var(--red);padding:3px 6px">削除</button>`
+        }
+      </div>`;
+  }).join('');
+}
+
+function switchCatTab(type) {
+  currentCatTab = type;
+  document.getElementById('catListExpense').style.display = type === 'expense' ? '' : 'none';
+  document.getElementById('catListIncome').style.display  = type === 'income'  ? '' : 'none';
+  document.querySelectorAll('#catTabExpense,#catTabIncome').forEach(t => t.classList.remove('active'));
+  document.getElementById(type === 'expense' ? 'catTabExpense' : 'catTabIncome').classList.add('active');
+}
+
+// モーダルを開く
+function openCatModal(type, editKey) {
+  document.getElementById('catEditType').value = type;
+  document.getElementById('catEditKey').value  = editKey || '';
+  document.getElementById('catModalTitle').textContent = editKey ? 'カテゴリを編集' : 'カテゴリを追加';
+
+  if (editKey) {
+    const cat = (CATEGORY_MAP[type] || []).find(c => c.key === editKey);
+    if (cat) {
+      document.getElementById('catName').value      = cat.label;
+      document.getElementById('catIconInput').value = cat.icon;
+      document.getElementById('catIconPreview').textContent = cat.icon;
+    }
+  } else {
+    document.getElementById('catName').value      = '';
+    document.getElementById('catIconInput').value = '';
+    document.getElementById('catIconPreview').textContent = '💫';
+  }
+  document.getElementById('catModal').classList.add('open');
+}
+
+function selectCatIcon(icon) {
+  document.getElementById('catIconInput').value = icon;
+  document.getElementById('catIconPreview').textContent = icon;
+}
+
+// カテゴリを保存
+async function saveCategory() {
+  const type    = document.getElementById('catEditType').value;
+  const editKey = document.getElementById('catEditKey').value;
+  const label   = document.getElementById('catName').value.trim();
+  const icon    = document.getElementById('catIconInput').value.trim() || '💫';
+
+  if (!label) { showToast('カテゴリ名を入力してください', 'error'); return; }
+
+  const key = editKey || ('custom_' + Date.now());
+  const cat = { key, label, icon };
+
+  const cats = [...(CATEGORY_MAP[type] || [])];
+  const idx  = cats.findIndex(c => c.key === key);
+  if (idx !== -1) cats[idx] = cat;
+  else            cats.push(cat);
+
+  // CATEGORY_MAPを即時更新
+  CATEGORY_MAP[type] = cats;
+
+  // GASに保存
+  const customCategories = {
+    expense: CATEGORY_MAP.expense,
+    income:  CATEGORY_MAP.income,
+  };
+  const result = await postToGas({
+    action: 'saveSettings',
+    settings: { customCategories }
+  });
+
+  if (result?.ok) {
+    document.getElementById('catModal').classList.remove('open');
+    renderCategorySettings();
+    showToast((editKey ? '更新' : '追加') + 'しました ✓', 'success');
+  }
+}
+
+// カテゴリを削除
+async function deleteCategory(type, key) {
+  const cat = (CATEGORY_MAP[type] || []).find(c => c.key === key);
+  if (!confirm('「' + (cat?.label || key) + '」を削除しますか？')) return;
+
+  CATEGORY_MAP[type] = (CATEGORY_MAP[type] || []).filter(c => c.key !== key);
+
+  const customCategories = {
+    expense: CATEGORY_MAP.expense,
+    income:  CATEGORY_MAP.income,
+  };
+  const result = await postToGas({
+    action: 'saveSettings',
+    settings: { customCategories }
+  });
+
+  if (result?.ok) {
+    renderCategorySettings();
+    showToast('削除しました', 'success');
+  }
 }
 
 function setSyncState(state) {
