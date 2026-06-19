@@ -763,6 +763,102 @@ a { color: inherit; text-decoration: none; }
 
 
 <!-- ============================================================
+     取引詳細・編集モーダル
+     ============================================================ -->
+<div class="modal-overlay" id="txDetailModal" onclick="closeModalOnOverlay(event)">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+
+    <!-- 表示モード -->
+    <div id="txViewMode">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px">
+        <div>
+          <div style="font-size:1.6rem;font-weight:800;letter-spacing:-0.02em" id="txViewAmount"></div>
+          <div style="font-size:.75rem;color:var(--muted);margin-top:2px" id="txViewMeta"></div>
+        </div>
+        <div id="txViewCatIcon" style="font-size:2rem"></div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:20px">
+        <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--stone)">
+          <span style="font-size:.78rem;color:var(--muted)">カテゴリ</span>
+          <span style="font-size:.78rem;font-weight:600" id="txViewCategory"></span>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--stone)">
+          <span style="font-size:.78rem;color:var(--muted)">口座</span>
+          <span style="font-size:.78rem;font-weight:600" id="txViewAccount"></span>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--stone)">
+          <span style="font-size:.78rem;color:var(--muted)">日付</span>
+          <span style="font-size:.78rem;font-weight:600" id="txViewDate"></span>
+        </div>
+        <div id="txViewMemoRow" style="display:flex;justify-content:space-between;padding:8px 0">
+          <span style="font-size:.78rem;color:var(--muted)">メモ</span>
+          <span style="font-size:.78rem;font-weight:600;text-align:right;max-width:60%" id="txViewMemo"></span>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <button class="submit-btn" style="background:var(--stone);color:var(--charcoal)"
+                onclick="switchToEditMode()">編集</button>
+        <button class="submit-btn" style="background:var(--red)"
+                onclick="deleteCurrentTx()">削除</button>
+      </div>
+    </div>
+
+    <!-- 編集モード -->
+    <div id="txEditMode" style="display:none">
+      <div style="font-size:.95rem;font-weight:700;margin-bottom:16px;color:var(--charcoal)">取引を編集</div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
+        <div>
+          <label class="form-label">種別</label>
+          <select class="form-control" id="editTxType" onchange="renderEditCategoryGrid()"
+                  style="font-size:.85rem">
+            <option value="expense">支出</option>
+            <option value="income">収入</option>
+            <option value="transfer">振替</option>
+          </select>
+        </div>
+        <div>
+          <label class="form-label">日付</label>
+          <input class="form-control" type="date" id="editTxDate">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">金額</label>
+        <div class="amount-input-wrap">
+          <span class="amount-currency">¥</span>
+          <input class="form-control" type="number" id="editTxAmount"
+                 inputmode="numeric" style="padding-left:28px;font-size:1.2rem;font-weight:700">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">メモ・店名</label>
+        <input class="form-control" type="text" id="editTxMemo" placeholder="メモ・店名">
+      </div>
+
+      <div class="form-group" id="editCategorySection">
+        <label class="form-label">カテゴリ</label>
+        <div class="category-grid" id="editCategoryGrid"></div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">口座</label>
+        <select class="form-control" id="editTxAccount"></select>
+      </div>
+
+      <input type="hidden" id="editTxId">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
+        <button class="submit-btn" style="background:var(--stone);color:var(--charcoal)"
+                onclick="switchToViewMode()">戻る</button>
+        <button class="submit-btn" onclick="saveEditedTx()">保存する</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
      レシート確認モーダル
      ============================================================ -->
 <div class="modal-overlay" id="receiptModal" onclick="closeModalOnOverlay(event)">
@@ -811,10 +907,61 @@ a { color: inherit; text-decoration: none; }
      ③ 明細一覧（骨格のみ・次フェーズで実装）
      ============================================================ -->
 <div class="screen" id="screen-list">
-  <div class="empty-state" style="padding-top:60px">
-    <div class="icon">📋</div>
-    <p>明細一覧は<br>次のアップデートで実装予定です</p>
+
+  <!-- 絞り込みバー -->
+  <div class="card" style="padding:12px">
+    <!-- 期間 -->
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px">
+      <button class="period-nav-btn" onclick="listChangePeriod(-1)">‹</button>
+      <span id="listPeriodLabel" style="flex:1;text-align:center;font-size:.88rem;font-weight:600"></span>
+      <button class="period-nav-btn" onclick="listChangePeriod(1)">›</button>
+    </div>
+    <!-- フィルター行 -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+      <select class="form-control" id="filterType" onchange="renderList()"
+              style="padding:8px 10px;font-size:.8rem">
+        <option value="">すべて</option>
+        <option value="expense">支出</option>
+        <option value="income">収入</option>
+        <option value="transfer">振替</option>
+      </select>
+      <select class="form-control" id="filterCategory" onchange="renderList()"
+              style="padding:8px 10px;font-size:.8rem">
+        <option value="">全カテゴリ</option>
+      </select>
+      <select class="form-control" id="filterAccount" onchange="renderList()"
+              style="padding:8px 10px;font-size:.8rem">
+        <option value="">全口座</option>
+      </select>
+      <button onclick="resetListFilter()"
+              style="padding:8px;background:var(--stone);border-radius:var(--radius-sm);
+                     font-size:.78rem;color:var(--muted)">リセット</button>
+    </div>
   </div>
+
+  <!-- 集計サマリー -->
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px">
+    <div class="card" style="padding:10px;text-align:center;margin:0">
+      <div style="font-size:.62rem;color:var(--muted);font-weight:600;margin-bottom:3px">収入</div>
+      <div style="font-size:.95rem;font-weight:700;color:var(--sage-dark)" id="listIncomeSum">¥0</div>
+    </div>
+    <div class="card" style="padding:10px;text-align:center;margin:0">
+      <div style="font-size:.62rem;color:var(--muted);font-weight:600;margin-bottom:3px">支出</div>
+      <div style="font-size:.95rem;font-weight:700;color:var(--charcoal)" id="listExpenseSum">¥0</div>
+    </div>
+    <div class="card" style="padding:10px;text-align:center;margin:0">
+      <div style="font-size:.62rem;color:var(--muted);font-weight:600;margin-bottom:3px">収支</div>
+      <div style="font-size:.95rem;font-weight:700" id="listBalanceSum">¥0</div>
+    </div>
+  </div>
+
+  <!-- 取引一覧 -->
+  <div class="card" style="padding:8px 12px">
+    <div id="txListBody">
+      <div class="empty-state"><div class="icon">📋</div><p>取引がありません</p></div>
+    </div>
+  </div>
+
 </div>
 
 <!-- ============================================================
@@ -1764,6 +1911,7 @@ function showScreen(name) {
   if (navEl) navEl.classList.add('active');
 
   if (name === 'home') renderHome();
+  if (name === 'list') initListScreen();
 }
 
 // ============================================================
@@ -1967,6 +2115,248 @@ renderHome = function() {
   `;
   document.head.appendChild(style);
 })();
+
+// ============================================================
+// 明細一覧画面
+// ============================================================
+
+let listYear  = new Date().getFullYear();
+let listMonth = new Date().getMonth() + 1;
+let editingTxCategory = '';
+let currentTxId = null;
+
+// 明細画面を開いたとき（showScreen から呼ばれる）
+function initListScreen() {
+  listYear  = currentYear;
+  listMonth = currentMonth;
+  updateListPeriodLabel();
+  populateListFilters();
+  renderList();
+}
+
+function listChangePeriod(dir) {
+  listMonth += dir;
+  if (listMonth > 12) { listMonth = 1;  listYear++; }
+  if (listMonth < 1)  { listMonth = 12; listYear--; }
+  updateListPeriodLabel();
+  renderList();
+}
+
+function updateListPeriodLabel() {
+  const { start, end } = getPeriodRange(listYear, listMonth);
+  document.getElementById('listPeriodLabel').textContent =
+    listYear + '年' + listMonth + '月（' + start.slice(5) + '〜' + end.slice(5) + '）';
+}
+
+// フィルタープルダウンを初期化
+function populateListFilters() {
+  // カテゴリ一覧
+  const cats = new Set();
+  (appData?.transactions || []).forEach(t => { if (t.category) cats.add(t.category); });
+  const catEl = document.getElementById('filterCategory');
+  catEl.innerHTML = '<option value="">全カテゴリ</option>' +
+    [...cats].sort().map(c => '<option value="' + esc(c) + '">' + esc(c) + '</option>').join('');
+
+  // 口座一覧
+  const accEl = document.getElementById('filterAccount');
+  accEl.innerHTML = '<option value="">全口座</option>' +
+    (appData?.accounts || []).map(a =>
+      '<option value="' + a.id + '">' + esc(a.name) + '</option>').join('');
+}
+
+function resetListFilter() {
+  document.getElementById('filterType').value     = '';
+  document.getElementById('filterCategory').value = '';
+  document.getElementById('filterAccount').value  = '';
+  renderList();
+}
+
+// 明細一覧を描画
+function renderList() {
+  const { start, end } = getPeriodRange(listYear, listMonth);
+  const typeFilter  = document.getElementById('filterType')?.value     || '';
+  const catFilter   = document.getElementById('filterCategory')?.value || '';
+  const accFilter   = document.getElementById('filterAccount')?.value  || '';
+
+  let txs = (appData?.transactions || []).filter(t => t.date >= start && t.date <= end);
+  if (typeFilter) txs = txs.filter(t => t.type === typeFilter);
+  if (catFilter)  txs = txs.filter(t => t.category === catFilter);
+  if (accFilter)  txs = txs.filter(t => t.accountId === accFilter);
+
+  // 日付降順でソート
+  txs.sort((a, b) => b.date.localeCompare(a.date) || b.createdAt?.localeCompare(a.createdAt || '') || 0);
+
+  // サマリー集計
+  const incomeSum  = txs.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+  const expenseSum = txs.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+  const balance    = incomeSum - expenseSum;
+
+  document.getElementById('listIncomeSum').textContent  = formatMoney(incomeSum);
+  document.getElementById('listExpenseSum').textContent = formatMoney(expenseSum);
+  const balEl = document.getElementById('listBalanceSum');
+  balEl.textContent  = (balance >= 0 ? '+' : '') + formatMoney(Math.abs(balance));
+  balEl.style.color  = balance >= 0 ? 'var(--sage-dark)' : 'var(--red)';
+
+  // 一覧描画（日付でグループ化）
+  const bodyEl = document.getElementById('txListBody');
+  if (!txs.length) {
+    bodyEl.innerHTML = '<div class="empty-state"><div class="icon">📋</div><p>取引がありません</p></div>';
+    return;
+  }
+
+  // 日付グループに分ける
+  const groups = {};
+  txs.forEach(t => {
+    if (!groups[t.date]) groups[t.date] = [];
+    groups[t.date].push(t);
+  });
+
+  bodyEl.innerHTML = Object.entries(groups).map(([date, dayTxs]) => {
+    const dayTotal = dayTxs.reduce((s, t) =>
+      t.type === 'income' ? s + t.amount : t.type === 'expense' ? s - t.amount : s, 0);
+
+    const rows = dayTxs.map(t => {
+      const cat     = getCatInfo(t.category, t.type);
+      const accName = (appData?.accounts || []).find(a => a.id === t.accountId)?.name || '';
+      const sign    = t.type === 'income' ? '+' : t.type === 'transfer' ? '⇄' : '-';
+      const color   = t.type === 'income' ? 'var(--sage-dark)' : t.type === 'transfer' ? '#5B7FBF' : 'var(--charcoal)';
+      return `
+        <div class="tx-item" onclick="openTxDetail('${t.id}')" style="cursor:pointer">
+          <div class="tx-left">
+            <div class="tx-icon">${cat.icon}</div>
+            <div>
+              <div class="tx-memo">${esc(t.memo || t.category || '---')}</div>
+              <div class="tx-cat">${esc(t.category || '')}${accName ? '　' + esc(accName) : ''}</div>
+            </div>
+          </div>
+          <div class="tx-right">
+            <div class="tx-amount" style="color:${color}">${sign}${formatMoney(t.amount)}</div>
+          </div>
+        </div>`;
+    }).join('');
+
+    const d = new Date(date + 'T00:00:00');
+    const dateLabel = (d.getMonth()+1) + '/' + d.getDate() + '（' + ['日','月','火','水','木','金','土'][d.getDay()] + '）';
+    const daySign   = dayTotal >= 0 ? '+' : '';
+    return `
+      <div style="display:flex;justify-content:space-between;align-items:center;
+                  padding:8px 0 4px;margin-top:4px">
+        <span style="font-size:.75rem;font-weight:700;color:var(--muted)">${dateLabel}</span>
+        <span style="font-size:.75rem;font-weight:600;color:${dayTotal >= 0 ? 'var(--sage-dark)' : 'var(--red)'}">
+          ${daySign}${formatMoney(Math.abs(dayTotal))}
+        </span>
+      </div>
+      ${rows}`;
+  }).join('<div style="height:1px;background:var(--stone);margin:4px 0"></div>');
+}
+
+// ============================================================
+// 取引詳細・編集
+// ============================================================
+
+function openTxDetail(txId) {
+  const tx = (appData?.transactions || []).find(t => t.id === txId);
+  if (!tx) return;
+  currentTxId = txId;
+
+  // 表示モードで開く
+  switchToViewMode();
+
+  const cat     = getCatInfo(tx.category, tx.type);
+  const accName = (appData?.accounts || []).find(a => a.id === tx.accountId)?.name || '不明';
+  const sign    = tx.type === 'income' ? '+' : tx.type === 'transfer' ? '⇄ ' : '-';
+  const color   = tx.type === 'income' ? 'var(--sage-dark)' : tx.type === 'transfer' ? '#5B7FBF' : 'var(--charcoal)';
+
+  document.getElementById('txViewAmount').textContent   = sign + formatMoney(tx.amount);
+  document.getElementById('txViewAmount').style.color   = color;
+  document.getElementById('txViewMeta').textContent     = tx.date + '　' + (tx.type === 'expense' ? '支出' : tx.type === 'income' ? '収入' : '振替');
+  document.getElementById('txViewCatIcon').textContent  = cat.icon;
+  document.getElementById('txViewCategory').textContent = tx.category || '---';
+  document.getElementById('txViewAccount').textContent  = accName;
+  document.getElementById('txViewDate').textContent     = tx.date;
+  document.getElementById('txViewMemo').textContent     = tx.memo || '---';
+
+  document.getElementById('txDetailModal').classList.add('open');
+}
+
+function switchToViewMode() {
+  document.getElementById('txViewMode').style.display = '';
+  document.getElementById('txEditMode').style.display = 'none';
+}
+
+function switchToEditMode() {
+  const tx = (appData?.transactions || []).find(t => t.id === currentTxId);
+  if (!tx) return;
+
+  document.getElementById('editTxId').value     = tx.id;
+  document.getElementById('editTxType').value   = tx.type || 'expense';
+  document.getElementById('editTxDate').value   = tx.date;
+  document.getElementById('editTxAmount').value = tx.amount;
+  document.getElementById('editTxMemo').value   = tx.memo || '';
+  editingTxCategory = tx.category || '';
+
+  // 口座プルダウン
+  const accOpts = (appData?.accounts || []).map(a =>
+    '<option value="' + a.id + '"' + (a.id === tx.accountId ? ' selected' : '') + '>' + esc(a.name) + '</option>'
+  ).join('');
+  document.getElementById('editTxAccount').innerHTML = accOpts || '<option>口座未登録</option>';
+
+  // カテゴリグリッド
+  renderEditCategoryGrid();
+
+  document.getElementById('txViewMode').style.display = 'none';
+  document.getElementById('txEditMode').style.display = '';
+}
+
+function renderEditCategoryGrid() {
+  const type = document.getElementById('editTxType').value;
+  const cats = CATEGORY_MAP[type] || CATEGORY_MAP.expense;
+  document.getElementById('editCategorySection').style.display = type === 'transfer' ? 'none' : '';
+  document.getElementById('editCategoryGrid').innerHTML = cats.map(c => `
+    <button class="cat-btn ${editingTxCategory === c.label ? 'selected' : ''}"
+            onclick="editingTxCategory='${c.label}';renderEditCategoryGrid()">
+      <span class="cat-icon">${c.icon}</span>${c.label}
+    </button>`).join('');
+}
+
+async function saveEditedTx() {
+  const id      = document.getElementById('editTxId').value;
+  const type    = document.getElementById('editTxType').value;
+  const date    = document.getElementById('editTxDate').value;
+  const amount  = parseInt(document.getElementById('editTxAmount').value);
+  const memo    = document.getElementById('editTxMemo').value.trim();
+  const account = document.getElementById('editTxAccount').value;
+
+  if (!amount || amount <= 0) { showToast('金額を入力してください', 'error'); return; }
+  if (!date)                  { showToast('日付を選択してください', 'error'); return; }
+  if (type !== 'transfer' && !editingTxCategory) { showToast('カテゴリを選択してください', 'error'); return; }
+
+  const updated = { id, type, date, amount, memo, category: editingTxCategory, accountId: account };
+  const result  = await postToGas({ action: 'updateTransaction', transaction: updated });
+
+  if (result?.ok) {
+    const idx = appData.transactions.findIndex(t => t.id === id);
+    if (idx !== -1) appData.transactions[idx] = { ...appData.transactions[idx], ...updated };
+    document.getElementById('txDetailModal').classList.remove('open');
+    showToast('更新しました ✓', 'success');
+    renderList();
+    renderHome();
+  }
+}
+
+async function deleteCurrentTx() {
+  if (!currentTxId) return;
+  if (!confirm('この取引を削除しますか？')) return;
+
+  const result = await postToGas({ action: 'deleteTransaction', id: currentTxId });
+  if (result?.ok) {
+    appData.transactions = appData.transactions.filter(t => t.id !== currentTxId);
+    document.getElementById('txDetailModal').classList.remove('open');
+    showToast('削除しました', 'success');
+    renderList();
+    renderHome();
+  }
+}
 
 // ============================================================
 // 口座編集機能
