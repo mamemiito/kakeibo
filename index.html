@@ -705,6 +705,14 @@ a { color: inherit; text-decoration: none; }
 <div class="screen" id="screen-input">
   <div class="card">
 
+    <!-- テンプレート呼び出し -->
+    <button onclick="openTemplatePicker()"
+            style="width:100%;padding:10px;background:var(--stone);border-radius:var(--radius-sm);
+                   font-size:.82rem;font-weight:600;color:var(--sage-dark);margin-bottom:12px;
+                   display:flex;align-items:center;justify-content:center;gap:6px">
+      <span>📋</span> テンプレートから呼び出す
+    </button>
+
     <!-- 収入・支出・振替 タブ -->
     <div class="type-tabs">
       <button class="type-tab active expense" data-type="expense" onclick="selectType('expense')">支出</button>
@@ -761,6 +769,137 @@ a { color: inherit; text-decoration: none; }
   </div>
 </div><!-- /screen-input -->
 
+
+<!-- ============================================================
+     特別費追加モーダル
+     ============================================================ -->
+<div class="modal-overlay" id="specialFeeModal" onclick="closeModalOnOverlay(event)">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="section-title" style="margin-bottom:16px">
+      <span id="specialFeeModalTitle">特別費を追加</span>
+      <button onclick="document.getElementById('specialFeeModal').classList.remove('open')"
+              style="font-size:.8rem;color:var(--muted)">閉じる</button>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">名前</label>
+      <input class="form-control" type="text" id="sfName" placeholder="例：車検、自動車税、火災保険">
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">金額（1回あたり）</label>
+      <div class="amount-input-wrap">
+        <span class="amount-currency">¥</span>
+        <input class="form-control" type="number" id="sfAmount"
+               placeholder="0" inputmode="numeric" style="padding-left:28px"
+               oninput="updateSfPreview()">
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">発生頻度</label>
+      <select class="form-control" id="sfFrequency" onchange="updateSfPreview()">
+        <option value="monthly">毎月</option>
+        <option value="bimonthly">隔月（2ヶ月ごと）</option>
+        <option value="quarterly">3ヶ月ごと</option>
+        <option value="biannual">半年ごと</option>
+        <option value="annual" selected>年1回</option>
+        <option value="2year">2年ごと</option>
+        <option value="3year">3年ごと</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">次回発生予定（年月）</label>
+      <input class="form-control" type="month" id="sfNextDate" oninput="updateSfPreview()">
+    </div>
+
+    <!-- プレビュー -->
+    <div style="background:var(--stone);border-radius:var(--radius-sm);
+                padding:12px 14px;margin-bottom:14px">
+      <div style="font-size:.72rem;font-weight:600;color:var(--muted);margin-bottom:8px">積立プレビュー</div>
+      <div style="display:flex;justify-content:space-between;font-size:.82rem;margin-bottom:4px">
+        <span>年換算額</span>
+        <span id="sfAnnualPreview" style="font-weight:700">---</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:.82rem">
+        <span>月割り積立額</span>
+        <span id="sfMonthlyPreview" style="font-weight:700;color:var(--sage-dark)">---</span>
+      </div>
+    </div>
+
+    <input type="hidden" id="sfEditId">
+    <button class="submit-btn" onclick="saveSpecialFee()">追加する</button>
+  </div>
+</div>
+
+<!-- ============================================================
+     定型取引テンプレート追加モーダル
+     ============================================================ -->
+<div class="modal-overlay" id="templateModal" onclick="closeModalOnOverlay(event)">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="section-title" style="margin-bottom:16px">
+      <span id="templateModalTitle">テンプレートを追加</span>
+      <button onclick="document.getElementById('templateModal').classList.remove('open')"
+              style="font-size:.8rem;color:var(--muted)">閉じる</button>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">テンプレート名</label>
+      <input class="form-control" type="text" id="tplName" placeholder="例：家賃、電気代、NHK受信料">
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">種別</label>
+      <select class="form-control" id="tplType" onchange="renderTplCategoryGrid()">
+        <option value="expense">支出</option>
+        <option value="income">収入</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">金額（目安）</label>
+      <div class="amount-input-wrap">
+        <span class="amount-currency">¥</span>
+        <input class="form-control" type="number" id="tplAmount"
+               placeholder="0" inputmode="numeric" style="padding-left:28px">
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">カテゴリ</label>
+      <div class="category-grid" id="tplCategoryGrid"></div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">口座</label>
+      <select class="form-control" id="tplAccount"></select>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">メモ（任意）</label>
+      <input class="form-control" type="text" id="tplMemo" placeholder="例：〇〇アパート">
+    </div>
+
+    <input type="hidden" id="tplEditId">
+    <button class="submit-btn" onclick="saveTemplate()">追加する</button>
+  </div>
+</div>
+
+<!-- ============================================================
+     テンプレート呼び出しボトムシート（入力画面から使う）
+     ============================================================ -->
+<div class="modal-overlay" id="templatePickerModal" onclick="closeModalOnOverlay(event)">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="section-title" style="margin-bottom:12px">テンプレートから呼び出す</div>
+    <div id="templatePickerList">
+      <div class="empty-state"><p>テンプレートが登録されていません<br>設定画面から追加してください</p></div>
+    </div>
+  </div>
+</div>
 
 <!-- ============================================================
      取引詳細・編集モーダル
@@ -1008,6 +1147,35 @@ a { color: inherit; text-decoration: none; }
         <option value="25">25日（給料日翌日）</option>
       </select>
     </div>
+  </div>
+
+  <!-- ① 特別費プランナー -->
+  <div class="card">
+    <div class="card-title">特別費プランナー（積立管理）</div>
+    <p style="font-size:.75rem;color:var(--muted);margin-bottom:10px;line-height:1.6">
+      車検・保険・税金など不定期の支出を登録して月割り積立額を自動計算します
+    </p>
+    <!-- 月額積立合計 -->
+    <div style="background:var(--sage-light);border-radius:var(--radius-sm);
+                padding:10px 14px;margin-bottom:12px;
+                display:flex;justify-content:space-between;align-items:center">
+      <span style="font-size:.8rem;font-weight:600;color:var(--sage-dark)">💰 月額積立合計</span>
+      <span style="font-size:1.1rem;font-weight:800;color:var(--sage-dark)" id="specialMonthlyTotal">¥0</span>
+    </div>
+    <div id="specialFeeList" style="margin-bottom:10px"></div>
+    <button class="submit-btn" style="background:var(--stone);color:var(--charcoal);margin-top:0"
+            onclick="openSpecialFeeModal()">＋ 特別費を追加</button>
+  </div>
+
+  <!-- ② 定型取引テンプレート -->
+  <div class="card">
+    <div class="card-title">定型取引テンプレート</div>
+    <p style="font-size:.75rem;color:var(--muted);margin-bottom:10px;line-height:1.6">
+      毎月決まった支出を登録して入力画面から1タップで呼び出せます
+    </p>
+    <div id="templateList" style="margin-bottom:10px"></div>
+    <button class="submit-btn" style="background:var(--stone);color:var(--charcoal);margin-top:0"
+            onclick="openTemplateModal()">＋ テンプレートを追加</button>
   </div>
 
 </div><!-- /screen-settings -->
@@ -1384,9 +1552,13 @@ function renderHome() {
 
   // 積立額（設定から）
   const settings = appData.settings || {};
-  const annualSpecial = (settings.annualSpecial || []).reduce((s, i) => s + i.amount, 0);
+  // 特別費プランナーの月割り積立合計（frequency対応版）
+  const annualSpecialMonthly = (settings.annualSpecial || []).reduce((s, i) => {
+    return s + (i.monthlyReserve || calcSfMonthly(i.amount, i.frequency || 'annual'));
+  }, 0);
   const tax = calcTaxForecast(settings.taxForecast || {});
-  const monthlySavings = Math.ceil((annualSpecial + tax) / 12 / 100) * 100;
+  const taxMonthly = Math.ceil(tax / 12 / 100) * 100;
+  const monthlySavings = annualSpecialMonthly + taxMonthly;
 
   // サブスク合計
   const monthlyFixed = (settings.subscriptions || []).reduce((s, i) => s + i.amount, 0);
@@ -1912,6 +2084,7 @@ function showScreen(name) {
 
   if (name === 'home') renderHome();
   if (name === 'list') initListScreen();
+  if (name === 'settings') initSettingsScreen();
 }
 
 // ============================================================
@@ -2452,6 +2625,349 @@ async function updateAccount() {
     showToast('口座を更新しました ✓', 'success');
     renderHome();
   }
+}
+
+// ============================================================
+// ① 特別費プランナー
+// ============================================================
+
+const SF_FREQ_LABELS = {
+  monthly:   '毎月',
+  bimonthly: '隔月',
+  quarterly: '3ヶ月ごと',
+  biannual:  '半年ごと',
+  annual:    '年1回',
+  '2year':   '2年ごと',
+  '3year':   '3年ごと',
+};
+
+// 年換算係数（1回の金額 × この係数 = 年換算額）
+const SF_ANNUAL_FACTOR = {
+  monthly: 12, bimonthly: 6, quarterly: 4,
+  biannual: 2, annual: 1, '2year': 0.5, '3year': 1/3
+};
+
+function calcSfMonthly(amount, frequency) {
+  const factor = SF_ANNUAL_FACTOR[frequency] || 1;
+  return Math.ceil((amount * factor) / 12 / 100) * 100;
+}
+
+function calcSfAnnual(amount, frequency) {
+  const factor = SF_ANNUAL_FACTOR[frequency] || 1;
+  return Math.round(amount * factor);
+}
+
+// プレビュー更新
+function updateSfPreview() {
+  const amount    = parseInt(document.getElementById('sfAmount').value) || 0;
+  const frequency = document.getElementById('sfFrequency').value;
+  const annual    = calcSfAnnual(amount, frequency);
+  const monthly   = calcSfMonthly(amount, frequency);
+  document.getElementById('sfAnnualPreview').textContent  = formatMoney(annual) + '/年';
+  document.getElementById('sfMonthlyPreview').textContent = formatMoney(monthly) + '/月';
+}
+
+// モーダルを開く（新規）
+function openSpecialFeeModal(editId) {
+  document.getElementById('sfEditId').value = editId || '';
+  document.getElementById('specialFeeModalTitle').textContent = editId ? '特別費を編集' : '特別費を追加';
+
+  if (editId) {
+    const item = (appData?.settings?.annualSpecial || []).find(i => i.id === editId);
+    if (item) {
+      document.getElementById('sfName').value      = item.name || '';
+      document.getElementById('sfAmount').value    = item.amount || 0;
+      document.getElementById('sfFrequency').value = item.frequency || 'annual';
+      document.getElementById('sfNextDate').value  = item.nextDate || '';
+    }
+  } else {
+    document.getElementById('sfName').value      = '';
+    document.getElementById('sfAmount').value    = '';
+    document.getElementById('sfFrequency').value = 'annual';
+    document.getElementById('sfNextDate').value  = '';
+  }
+  updateSfPreview();
+  document.getElementById('specialFeeModal').classList.add('open');
+}
+
+// 保存
+async function saveSpecialFee() {
+  const name      = document.getElementById('sfName').value.trim();
+  const amount    = parseInt(document.getElementById('sfAmount').value) || 0;
+  const frequency = document.getElementById('sfFrequency').value;
+  const nextDate  = document.getElementById('sfNextDate').value;
+  const editId    = document.getElementById('sfEditId').value;
+
+  if (!name)   { showToast('名前を入力してください', 'error'); return; }
+  if (!amount) { showToast('金額を入力してください', 'error'); return; }
+
+  const item = {
+    id:           editId || ('sf_' + Date.now()),
+    name, amount, frequency, nextDate,
+    annualAmount:  calcSfAnnual(amount, frequency),
+    monthlyReserve: calcSfMonthly(amount, frequency),
+  };
+
+  if (!appData.settings.annualSpecial) appData.settings.annualSpecial = [];
+  const idx = appData.settings.annualSpecial.findIndex(i => i.id === item.id);
+  if (idx !== -1) appData.settings.annualSpecial[idx] = item;
+  else            appData.settings.annualSpecial.push(item);
+
+  const result = await postToGas({
+    action: 'saveSettings',
+    settings: { annualSpecial: appData.settings.annualSpecial }
+  });
+
+  if (result?.ok) {
+    document.getElementById('specialFeeModal').classList.remove('open');
+    renderSpecialFeeList();
+    renderHome();
+    showToast((editId ? '更新' : '追加') + 'しました ✓', 'success');
+  }
+}
+
+// 削除
+async function deleteSpecialFee(id) {
+  if (!confirm('この特別費を削除しますか？')) return;
+  appData.settings.annualSpecial = (appData.settings.annualSpecial || []).filter(i => i.id !== id);
+  const result = await postToGas({
+    action: 'saveSettings',
+    settings: { annualSpecial: appData.settings.annualSpecial }
+  });
+  if (result?.ok) { renderSpecialFeeList(); renderHome(); showToast('削除しました', 'success'); }
+}
+
+// 設定画面に一覧描画
+function renderSpecialFeeList() {
+  const el    = document.getElementById('specialFeeList');
+  const items = appData?.settings?.annualSpecial || [];
+
+  // 月額合計更新
+  const monthlyTotal = items.reduce((s, i) => s + (i.monthlyReserve || calcSfMonthly(i.amount, i.frequency || 'annual')), 0);
+  document.getElementById('specialMonthlyTotal').textContent = formatMoney(monthlyTotal);
+
+  if (!items.length) {
+    el.innerHTML = '<div style="color:var(--muted);font-size:.82rem;text-align:center;padding:10px">まだ登録されていません</div>';
+    return;
+  }
+
+  el.innerHTML = items.map(item => {
+    const monthly  = item.monthlyReserve || calcSfMonthly(item.amount, item.frequency || 'annual');
+    const freqLabel = SF_FREQ_LABELS[item.frequency] || item.frequency;
+    const nextLabel = item.nextDate ? '次回：' + item.nextDate : '';
+    return `
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;
+                  padding:10px 0;border-bottom:1px solid var(--stone)">
+        <div style="flex:1">
+          <div style="font-size:.88rem;font-weight:600">${esc(item.name)}</div>
+          <div style="font-size:.7rem;color:var(--muted);margin-top:2px">
+            ${formatMoney(item.amount)}・${freqLabel}${nextLabel ? '　' + nextLabel : ''}
+          </div>
+          <div style="font-size:.72rem;color:var(--sage-dark);margin-top:2px;font-weight:600">
+            月割り積立：${formatMoney(monthly)}
+          </div>
+        </div>
+        <div style="display:flex;gap:4px;margin-left:8px">
+          <button onclick="openSpecialFeeModal('${item.id}')"
+                  style="font-size:.72rem;color:var(--sage-dark);padding:4px 8px;
+                         background:var(--sage-light);border-radius:6px">編集</button>
+          <button onclick="deleteSpecialFee('${item.id}')"
+                  style="font-size:.72rem;color:var(--red);padding:4px 8px">削除</button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+// ============================================================
+// ② 定型取引テンプレート
+// ============================================================
+
+let tplEditingCategory = '';
+
+function openTemplateModal(editId) {
+  document.getElementById('tplEditId').value = editId || '';
+  document.getElementById('templateModalTitle').textContent = editId ? 'テンプレートを編集' : 'テンプレートを追加';
+
+  // 口座プルダウン
+  const accOpts = (appData?.accounts || []).map(a =>
+    '<option value="' + a.id + '">' + esc(a.name) + '</option>').join('');
+  document.getElementById('tplAccount').innerHTML = accOpts || '<option>口座未登録</option>';
+
+  if (editId) {
+    const tpl = (appData?.settings?.templates || []).find(t => t.id === editId);
+    if (tpl) {
+      document.getElementById('tplName').value   = tpl.name   || '';
+      document.getElementById('tplType').value   = tpl.type   || 'expense';
+      document.getElementById('tplAmount').value = tpl.amount || '';
+      document.getElementById('tplMemo').value   = tpl.memo   || '';
+      document.getElementById('tplAccount').value = tpl.accountId || '';
+      tplEditingCategory = tpl.category || '';
+    }
+  } else {
+    document.getElementById('tplName').value   = '';
+    document.getElementById('tplType').value   = 'expense';
+    document.getElementById('tplAmount').value = '';
+    document.getElementById('tplMemo').value   = '';
+    tplEditingCategory = '';
+  }
+
+  renderTplCategoryGrid();
+  document.getElementById('templateModal').classList.add('open');
+}
+
+function renderTplCategoryGrid() {
+  const type = document.getElementById('tplType').value;
+  const cats = CATEGORY_MAP[type] || CATEGORY_MAP.expense;
+  document.getElementById('tplCategoryGrid').innerHTML = cats.map(c => `
+    <button class="cat-btn ${tplEditingCategory === c.label ? 'selected' : ''}"
+            onclick="tplEditingCategory='${c.label}';renderTplCategoryGrid()">
+      <span class="cat-icon">${c.icon}</span>${c.label}
+    </button>`).join('');
+}
+
+async function saveTemplate() {
+  const name      = document.getElementById('tplName').value.trim();
+  const type      = document.getElementById('tplType').value;
+  const amount    = parseInt(document.getElementById('tplAmount').value) || 0;
+  const accountId = document.getElementById('tplAccount').value;
+  const memo      = document.getElementById('tplMemo').value.trim();
+  const editId    = document.getElementById('tplEditId').value;
+
+  if (!name)              { showToast('テンプレート名を入力してください', 'error'); return; }
+  if (!tplEditingCategory){ showToast('カテゴリを選択してください', 'error'); return; }
+
+  const tpl = {
+    id:        editId || ('tpl_' + Date.now()),
+    name, type, amount, accountId, memo,
+    category:  tplEditingCategory,
+  };
+
+  if (!appData.settings.templates) appData.settings.templates = [];
+  const idx = appData.settings.templates.findIndex(t => t.id === tpl.id);
+  if (idx !== -1) appData.settings.templates[idx] = tpl;
+  else            appData.settings.templates.push(tpl);
+
+  const result = await postToGas({
+    action: 'saveSettings',
+    settings: { templates: appData.settings.templates }
+  });
+
+  if (result?.ok) {
+    document.getElementById('templateModal').classList.remove('open');
+    renderTemplateList();
+    showToast((editId ? '更新' : '追加') + 'しました ✓', 'success');
+  }
+}
+
+async function deleteTemplate(id) {
+  if (!confirm('このテンプレートを削除しますか？')) return;
+  appData.settings.templates = (appData.settings.templates || []).filter(t => t.id !== id);
+  const result = await postToGas({
+    action: 'saveSettings',
+    settings: { templates: appData.settings.templates }
+  });
+  if (result?.ok) { renderTemplateList(); showToast('削除しました', 'success'); }
+}
+
+function renderTemplateList() {
+  const el   = document.getElementById('templateList');
+  const tpls = appData?.settings?.templates || [];
+  if (!tpls.length) {
+    el.innerHTML = '<div style="color:var(--muted);font-size:.82rem;text-align:center;padding:10px">まだ登録されていません</div>';
+    return;
+  }
+  el.innerHTML = tpls.map(tpl => {
+    const accName = (appData?.accounts || []).find(a => a.id === tpl.accountId)?.name || '';
+    const cat     = getCatInfo(tpl.category, tpl.type);
+    return `
+      <div style="display:flex;justify-content:space-between;align-items:center;
+                  padding:10px 0;border-bottom:1px solid var(--stone)">
+        <div style="display:flex;align-items:center;gap:8px;flex:1">
+          <span style="font-size:1.2rem">${cat.icon}</span>
+          <div>
+            <div style="font-size:.88rem;font-weight:600">${esc(tpl.name)}</div>
+            <div style="font-size:.7rem;color:var(--muted);margin-top:1px">
+              ${formatMoney(tpl.amount)}・${esc(tpl.category)}${accName ? '・' + esc(accName) : ''}
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;gap:4px">
+          <button onclick="openTemplateModal('${tpl.id}')"
+                  style="font-size:.72rem;color:var(--sage-dark);padding:4px 8px;
+                         background:var(--sage-light);border-radius:6px">編集</button>
+          <button onclick="deleteTemplate('${tpl.id}')"
+                  style="font-size:.72rem;color:var(--red);padding:4px 8px">削除</button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+// 入力画面からテンプレートを呼び出す
+function openTemplatePicker() {
+  const tpls = appData?.settings?.templates || [];
+  const el   = document.getElementById('templatePickerList');
+
+  if (!tpls.length) {
+    el.innerHTML = '<div class="empty-state"><p>テンプレートが登録されていません<br>設定画面から追加してください</p></div>';
+  } else {
+    el.innerHTML = tpls.map(tpl => {
+      const cat     = getCatInfo(tpl.category, tpl.type);
+      const accName = (appData?.accounts || []).find(a => a.id === tpl.accountId)?.name || '';
+      return `
+        <div onclick="applyTemplate('${tpl.id}')"
+             style="display:flex;align-items:center;gap:10px;padding:12px 4px;
+                    border-bottom:1px solid var(--stone);cursor:pointer;
+                    -webkit-tap-highlight-color:transparent">
+          <div style="width:40px;height:40px;border-radius:var(--radius-sm);
+                      background:var(--stone);display:flex;align-items:center;
+                      justify-content:center;font-size:1.3rem;flex-shrink:0">${cat.icon}</div>
+          <div style="flex:1">
+            <div style="font-size:.9rem;font-weight:600">${esc(tpl.name)}</div>
+            <div style="font-size:.72rem;color:var(--muted);margin-top:1px">
+              ${formatMoney(tpl.amount)}・${esc(tpl.category)}${accName ? '・' + esc(accName) : ''}
+            </div>
+          </div>
+          <span style="color:var(--muted);font-size:1.1rem">›</span>
+        </div>`;
+    }).join('');
+  }
+
+  document.getElementById('templatePickerModal').classList.add('open');
+}
+
+// テンプレートを入力フォームに反映
+function applyTemplate(tplId) {
+  const tpl = (appData?.settings?.templates || []).find(t => t.id === tplId);
+  if (!tpl) return;
+
+  selectType(tpl.type || 'expense');
+  document.getElementById('inputAmount').value = tpl.amount || '';
+  document.getElementById('inputMemo').value   = tpl.memo || tpl.name || '';
+  selectedCategory = tpl.category || '';
+  renderCategoryGrid(tpl.type || 'expense');
+
+  if (tpl.accountId) {
+    const accEl = document.getElementById('inputAccount');
+    if ([...accEl.options].some(o => o.value === tpl.accountId)) {
+      accEl.value = tpl.accountId;
+    }
+  }
+
+  // AI分類バッジを非表示
+  document.getElementById('aiBadge').style.display = 'none';
+
+  document.getElementById('templatePickerModal').classList.remove('open');
+  showToast('「' + tpl.name + '」を呼び出しました', 'success');
+}
+
+// ============================================================
+// 設定画面初期化（showScreen('settings') から呼ぶ）
+// ============================================================
+function initSettingsScreen() {
+  renderSpecialFeeList();
+  renderTemplateList();
+  renderAccountSettings();
+  loadSettingsLocal();
 }
 
 function setSyncState(state) {
