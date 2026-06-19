@@ -1566,9 +1566,13 @@ function renderHome() {
   // 真の黒字
   const surplus = income - expense - monthlySavings - monthlyFixed;
 
+  // surplus をグローバルに保持（renderTotalAssetsから参照するため）
+  window._lastSurplus = surplus;
+
   // ヒーロー更新
   const heroEl = document.getElementById('heroAmount');
-  heroEl.textContent = formatMoney(surplus);
+  // マイナスは色で表現するため表示はプラス金額のみ
+  heroEl.textContent = (surplus < 0 ? '-' : '') + '¥' + Math.abs(Math.round(surplus)).toLocaleString('ja-JP');
   heroEl.className   = 'hero-amount' + (surplus < 0 ? ' minus' : '');
 
   document.getElementById('heroIncome').textContent   = formatMoneyShort(income);
@@ -1666,13 +1670,13 @@ function renderTotalAssets(accountBalances) {
   document.getElementById('assetsInvestment').textContent  = formatMoney(investTotal);
   document.getElementById('assetsCredit').textContent      = formatMoney(creditTotal);
 
-  // 先月比（今月の真の黒字を使って簡易計算）
-  const heroAmount = parseInt(document.getElementById('heroAmount')?.textContent?.replace(/[¥,]/g,'')) || 0;
-  const diffEl     = document.getElementById('totalAssetsDiff');
-  if (heroAmount !== 0) {
-    const sign = heroAmount >= 0 ? '+' : '';
-    diffEl.textContent = `今月の増減：${sign}${formatMoney(Math.abs(heroAmount))}`;
-    diffEl.style.color = heroAmount >= 0 ? 'var(--sage-dark)' : 'var(--red)';
+  // 今月の真の黒字（surplus）をグローバル変数から取得
+  const surplus_ = window._lastSurplus;
+  const diffEl   = document.getElementById('totalAssetsDiff');
+  if (surplus_ !== undefined && surplus_ !== 0) {
+    const sign = surplus_ >= 0 ? '+' : '';
+    diffEl.textContent = '今月の増減：' + sign + formatMoney(surplus_);
+    diffEl.style.color = surplus_ >= 0 ? 'var(--sage-dark)' : 'var(--red)';
   } else {
     diffEl.textContent = '';
   }
@@ -2056,7 +2060,8 @@ function accountTypeLabel(type) {
 
 function formatMoney(n) {
   if (n === undefined || n === null || isNaN(n)) return '¥0';
-  return '¥' + Math.abs(Math.round(n)).toLocaleString('ja-JP');
+  const sign = n < 0 ? '-' : '';
+  return sign + '¥' + Math.abs(Math.round(n)).toLocaleString('ja-JP');
 }
 function formatMoneyShort(n) {
   if (Math.abs(n) >= 10000) return (Math.round(n/1000)/10).toFixed(1) + '万';
