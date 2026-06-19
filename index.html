@@ -1574,7 +1574,11 @@ function gasJsonp(params, timeoutMs) {
     window[cbName] = (data) => { cleanup(); resolve(data); };
 
     const qs = Object.entries({ ...params, callback: cbName })
-      .map(([k, v]) => k + '=' + encodeURIComponent(typeof v === 'object' ? JSON.stringify(v) : v))
+      .map(([k, v]) => {
+        // payload は呼び出し元で処理済み、callback はそのまま、他はエンコード
+        if (k === 'payload' || k === 'callback') return k + '=' + v;
+        return k + '=' + encodeURIComponent(typeof v === 'object' ? JSON.stringify(v) : v);
+      })
       .join('&');
 
     script.src = gasUrl + '?' + qs;
@@ -1611,9 +1615,13 @@ async function postToGas(body) {
   setSyncState('syncing');
   try {
     const { action, ...rest } = body;
+    // 絵文字・日本語を含むデータをBase64で安全にエンコード
+    const jsonStr  = JSON.stringify(rest);
+    const b64      = btoa(unescape(encodeURIComponent(jsonStr)));
     const json = await gasJsonp({
       action,
-      payload: encodeURIComponent(JSON.stringify(rest))
+      payload: b64,
+      encoding: 'base64'
     });
     setSyncState(json.ok ? 'ok' : 'error');
     if (!json.ok) showToast(json.error || 'エラーが発生しました', 'error');
