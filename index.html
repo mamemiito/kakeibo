@@ -647,6 +647,28 @@ a { color: inherit; text-decoration: none; }
     </div>
   </div>
 
+  <!-- 総資産サマリー -->
+  <div class="card" id="totalAssetsCard">
+    <div class="card-title">TOTAL ASSETS · 総資産</div>
+    <div style="font-size:2rem;font-weight:800;color:var(--charcoal);
+                letter-spacing:-0.02em;margin-bottom:4px" id="totalAssetsAmount">¥---</div>
+    <div style="font-size:.75rem;color:var(--muted);margin-bottom:14px" id="totalAssetsDiff"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+      <div style="background:var(--sage-light);border-radius:var(--radius-sm);padding:10px 8px;text-align:center">
+        <div style="font-size:.62rem;color:var(--sage-dark);font-weight:600;margin-bottom:3px">💰 現金・銀行</div>
+        <div style="font-size:.9rem;font-weight:700;color:var(--sage-dark)" id="assetsCash">¥0</div>
+      </div>
+      <div style="background:#EEF4FB;border-radius:var(--radius-sm);padding:10px 8px;text-align:center">
+        <div style="font-size:.62rem;color:#3A6FA8;font-weight:600;margin-bottom:3px">📈 投資</div>
+        <div style="font-size:.9rem;font-weight:700;color:#3A6FA8" id="assetsInvestment">¥0</div>
+      </div>
+      <div style="background:var(--terra-light);border-radius:var(--radius-sm);padding:10px 8px;text-align:center">
+        <div style="font-size:.62rem;color:var(--red);font-weight:600;margin-bottom:3px">💳 クレカ等</div>
+        <div style="font-size:.9rem;font-weight:700;color:var(--red)" id="assetsCredit">¥0</div>
+      </div>
+    </div>
+  </div>
+
   <!-- 口座残高 -->
   <div class="card">
     <div class="section-title">
@@ -1250,22 +1272,91 @@ function renderAccountList() {
   const el = document.getElementById('accountList');
   if (!appData?.accounts?.length) {
     el.innerHTML = '<div style="color:var(--muted);font-size:.85rem;text-align:center;padding:12px">口座が登録されていません</div>';
+    renderTotalAssets([]);
     return;
   }
-  el.innerHTML = appData.accounts.map(acc => {
-    const balance = calcAccountBalance(acc);
-    return `
-      <div class="account-item">
-        <div class="account-item-left">
-          <div class="account-dot" style="background:${acc.color || '#A8C3A0'}"></div>
-          <div>
-            <div class="account-name">${esc(acc.name)}</div>
-            <div class="account-type-label">${accountTypeLabel(acc.type)}</div>
+
+  // 口座をグループ分け
+  const CASH_TYPES       = ['bank', 'cash'];
+  const INVEST_TYPES     = ['nisa', 'investment', 'fx'];
+  const CREDIT_TYPES     = ['credit', 'emoney'];
+  const GROUP_LABELS     = { cash: '💰 現金・銀行', invest: '📈 投資', credit: '💳 クレカ・電子マネー' };
+
+  const groups = {
+    cash:   appData.accounts.filter(a => CASH_TYPES.includes(a.type)),
+    invest: appData.accounts.filter(a => INVEST_TYPES.includes(a.type)),
+    credit: appData.accounts.filter(a => CREDIT_TYPES.includes(a.type)),
+    other:  appData.accounts.filter(a => ![...CASH_TYPES,...INVEST_TYPES,...CREDIT_TYPES].includes(a.type))
+  };
+
+  const accountBalances = {};
+  const renderGroup = (label, accounts) => {
+    if (!accounts.length) return '';
+    const rows = accounts.map(acc => {
+      const balance = calcAccountBalance(acc);
+      accountBalances[acc.id] = balance;
+      return `
+        <div class="account-item">
+          <div class="account-item-left">
+            <div class="account-dot" style="background:${acc.color || '#A8C3A0'}"></div>
+            <div>
+              <div class="account-name">${esc(acc.name)}</div>
+              <div class="account-type-label">${accountTypeLabel(acc.type)}</div>
+            </div>
           </div>
-        </div>
-        <div class="account-balance ${balance < 0 ? 'minus' : ''}">${formatMoney(balance)}</div>
-      </div>`;
-  }).join('');
+          <div class="account-balance ${balance < 0 ? 'minus' : ''}">${formatMoney(balance)}</div>
+        </div>`;
+    }).join('');
+    return `<div style="font-size:.7rem;font-weight:600;color:var(--muted);
+                        margin:10px 0 6px;letter-spacing:.05em">${label}</div>${rows}`;
+  };
+
+  el.innerHTML =
+    renderGroup(GROUP_LABELS.cash,   groups.cash)   +
+    renderGroup(GROUP_LABELS.invest, groups.invest)  +
+    renderGroup(GROUP_LABELS.credit, groups.credit)  +
+    renderGroup('その他',            groups.other);
+
+  renderTotalAssets(accountBalances);
+}
+
+// 総資産サマリーを描画
+function renderTotalAssets(accountBalances) {
+  if (!appData?.accounts) return;
+
+  const CASH_TYPES   = ['bank', 'cash'];
+  const INVEST_TYPES = ['nisa', 'investment', 'fx'];
+  const CREDIT_TYPES = ['credit', 'emoney'];
+
+  let cashTotal = 0, investTotal = 0, creditTotal = 0;
+
+  appData.accounts.forEach(acc => {
+    const bal = typeof accountBalances === 'object' && accountBalances[acc.id] !== undefined
+      ? accountBalances[acc.id]
+      : calcAccountBalance(acc);
+    if (CASH_TYPES.includes(acc.type))   cashTotal   += bal;
+    if (INVEST_TYPES.includes(acc.type)) investTotal += bal;
+    if (CREDIT_TYPES.includes(acc.type)) creditTotal += bal;
+  });
+
+  // 総資産 = 現金・銀行 + 投資（クレカは負債のため除外）
+  const total = cashTotal + investTotal;
+
+  document.getElementById('totalAssetsAmount').textContent = formatMoney(total);
+  document.getElementById('assetsCash').textContent        = formatMoney(cashTotal);
+  document.getElementById('assetsInvestment').textContent  = formatMoney(investTotal);
+  document.getElementById('assetsCredit').textContent      = formatMoney(creditTotal);
+
+  // 先月比（今月の真の黒字を使って簡易計算）
+  const heroAmount = parseInt(document.getElementById('heroAmount')?.textContent?.replace(/[¥,]/g,'')) || 0;
+  const diffEl     = document.getElementById('totalAssetsDiff');
+  if (heroAmount !== 0) {
+    const sign = heroAmount >= 0 ? '+' : '';
+    diffEl.textContent = `今月の増減：${sign}${formatMoney(Math.abs(heroAmount))}`;
+    diffEl.style.color = heroAmount >= 0 ? 'var(--sage-dark)' : 'var(--red)';
+  } else {
+    diffEl.textContent = '';
+  }
 }
 
 function renderRecentTx(txs) {
