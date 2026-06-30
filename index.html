@@ -1591,20 +1591,44 @@ async function loadDataFromGas() {
   if (!gasUrl) { hideLoading(); return; }
   setSyncState('syncing');
   try {
-    const json = await gasJsonp({ action: 'getData' });
-    if (json.ok) {
+    // fetchでGASにアクセス（リダイレクトに自動追従）
+    const res  = await fetch(gasUrl + '?action=getData', {
+      method: 'GET',
+      redirect: 'follow'
+    });
+    const text = await res.text();
+
+    // GASはJSONPコールバック形式で返す場合があるので両方対応
+    let json;
+    if (text.trim().startsWith('{')) {
+      json = JSON.parse(text);
+    } else {
+      // JSONP形式 "callback({...})" からJSONを抽出
+      const match = text.match(/\((\{[\s\S]*\})\)/);
+      json = match ? JSON.parse(match[1]) : null;
+    }
+
+    if (json && json.ok) {
       appData = json.data;
-      loadCustomCategories();  // カスタムカテゴリをCATEGORY_MAPに反映
+      loadCustomCategories();
       renderHome();
       renderAccountSelects();
       renderAccountSettings();
       setSyncState('ok');
     } else {
-      throw new Error(json.error || '取得失敗');
+      throw new Error((json && json.error) || '取得失敗');
     }
   } catch (e) {
     setSyncState('error');
-    showToast('データの取得に失敗しました: ' + e.message, 'error');
+    showToast('接続エラー。設定画面でGAS URLを確認してください。', 'error');
+    if (!appData) {
+      appData = {
+        transactions: [], accounts: [], settings: {},
+        categoryLearning: {}, receipts: []
+      };
+    }
+    renderHome();
+    renderAccountSelects();
   } finally {
     hideLoading();
   }
@@ -1949,6 +1973,8 @@ async function submitTransaction() {
   btn.textContent = '記録中...';
 
   const tx = {
+    id:        'tx_local_' + Date.now(),
+    createdAt: new Date().toISOString(),
     date, memo, amount,
     type:      selectedType,
     category:  selectedCategory,
@@ -1956,11 +1982,13 @@ async function submitTransaction() {
     ...(selectedType === 'transfer' ? { toAccountId: toAcct } : {}),
   };
 
-  // no-cors方式：GASに送信しつつローカルデータを即時更新（楽観的更新）
-  tx.id        = 'tx_local_' + Date.now();
-  tx.createdAt = new Date().toISOString();
+  // ① ローカルデータに即時追加（appDataがnullの場合は初期化して対応）
+  if (!appData) {
+    appData = { transactions: [], accounts: [], settings: {}, categoryLearning: {} };
+  }
+  if (!appData.transactions) appData.transactions = [];
+  if (!appData.categoryLearning) appData.categoryLearning = {};
 
-  // ① ローカルデータに即時追加（画面をすぐ更新）
   appData.transactions.push(tx);
   if (memo && selectedCategory) {
     appData.categoryLearning[memo] = selectedCategory;
@@ -2089,8 +2117,10 @@ async function saveGasUrl() {
   localStorage.setItem('kakeibo_gas_url', url);
   showLoading();
   await loadDataFromGas();
-  document.getElementById('setupBanner').style.display = 'none';
-  showToast('接続しました ✓', 'success');
+  if (appData && appData.transactions !== undefined) {
+    document.getElementById('setupBanner').style.display = 'none';
+    showToast('接続しました ✓', 'success');
+  }
 }
 
 function saveStartDay() {
