@@ -1512,6 +1512,22 @@ let currentYear      = new Date().getFullYear();
 let currentMonth     = new Date().getMonth() + 1;
 let autoClassifyTimer = null;
 
+// 集計開始日の設定を考慮して「今日が属する期間」の年月を計算する
+// 例：開始日=25、今日=6/30 の場合 → 期間は6/25〜7/24 なので month は7を返す
+function getCurrentPeriodYM() {
+  const today     = new Date();
+  const startDay  = parseInt(localStorage.getItem('kakeibo_start_day') || '1');
+  let year  = today.getFullYear();
+  let month = today.getMonth() + 1;
+
+  if (startDay !== 1 && today.getDate() >= startDay) {
+    // 今日が開始日以降なら「次の月」の期間に属する
+    month += 1;
+    if (month > 12) { month = 1; year += 1; }
+  }
+  return { year, month };
+}
+
 // ============================================================
 // 初期化
 // ============================================================
@@ -1520,6 +1536,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   renderCategoryGrid('expense');
   initColorPicker();
   loadSettingsLocal();
+
+  // 開始日設定を考慮して今日が属する正しい期間に初期化
+  const initPeriod = getCurrentPeriodYM();
+  currentYear  = initPeriod.year;
+  currentMonth = initPeriod.month;
 
   if (gasUrl) {
     await loadDataFromGas();
@@ -1609,11 +1630,26 @@ async function loadDataFromGas() {
     }
 
     if (json && json.ok) {
-      appData = json.data;
+      const freshData = json.data;
+
+      // 直前にローカルで編集・削除した取引がGASの古いデータで復活しないようにガード
+      if (window._pendingTxChanges && window._pendingTxChanges.size > 0) {
+        window._pendingTxChanges.forEach((change, txId) => {
+          if (change.type === 'update') {
+            const idx = freshData.transactions.findIndex(t => t.id === txId);
+            if (idx !== -1) freshData.transactions[idx] = change.data;
+          } else if (change.type === 'delete') {
+            freshData.transactions = freshData.transactions.filter(t => t.id !== txId);
+          }
+        });
+      }
+
+      appData = freshData;
       loadCustomCategories();
       renderHome();
       renderAccountSelects();
       renderAccountSettings();
+      if (document.getElementById('screen-list').classList.contains('active')) renderList();
       setSyncState('ok');
     } else {
       throw new Error((json && json.error) || '取得失敗');
@@ -2011,7 +2047,7 @@ async function submitTransaction() {
       showToast('同期に失敗しました。再度お試しください', 'error');
     }
     // 2秒後にGASの最新データで再同期（IDを正式なものに更新）
-    setTimeout(() => loadDataFromGas(), 2000);
+    setTimeout(() => loadDataFromGas(), 4000);
   });
 }
 
@@ -2066,7 +2102,7 @@ async function saveAccount() {
   showToast('口座を追加しました ✓', 'success');
 
   postToGas({ action: 'saveAccount', account }).then(() => {
-    setTimeout(() => loadDataFromGas(), 2000);
+    setTimeout(() => loadDataFromGas(), 4000);
   });
 }
 
@@ -2103,7 +2139,7 @@ async function deleteAccount(id) {
   renderAccountSettings();
   showToast('削除しました', 'success');
   postToGas({ action: 'deleteAccount', id }).then(() => {
-    setTimeout(() => loadDataFromGas(), 2000);
+    setTimeout(() => loadDataFromGas(), 4000);
   });
 }
 
@@ -2126,6 +2162,10 @@ async function saveGasUrl() {
 function saveStartDay() {
   const day = document.getElementById('startDaySelect').value;
   localStorage.setItem('kakeibo_start_day', day);
+  // 開始日変更に合わせて現在表示中の期間を再計算
+  const period = getCurrentPeriodYM();
+  currentYear  = period.year;
+  currentMonth = period.month;
   updatePeriodLabel();
   renderHome();
 }
@@ -2397,7 +2437,7 @@ async function confirmReceipt() {
 
   // バックグラウンドでGASに送信
   postToGas({ action: 'confirmReceipt', receiptId: currentReceipt.id, accountId, items })
-    .then(() => setTimeout(() => loadDataFromGas(), 2000));
+    .then(() => setTimeout(() => loadDataFromGas(), 4000));
 }
 
 // 破棄
@@ -2413,7 +2453,7 @@ async function deleteCurrentReceipt() {
   renderHome();
 
   postToGas({ action: 'deleteReceipt', receiptId: deletingReceiptId })
-    .then(() => setTimeout(() => loadDataFromGas(), 2000));
+    .then(() => setTimeout(() => loadDataFromGas(), 4000));
 }
 
 // renderHome に追記（既存関数の末尾に呼び出し追加）
@@ -2680,8 +2720,17 @@ async function saveEditedTx() {
   renderList();
   renderHome();
 
+  // 保留中の変更として記録（GASからの古いデータ上書きを防ぐ）
+  if (!window._pendingTxChanges) window._pendingTxChanges = new Map();
+  window._pendingTxChanges.set(id, { type: 'update', data: { ...appData.transactions[idx] } });
+
   postToGas({ action: 'updateTransaction', transaction: updated }).then(() => {
-    setTimeout(() => loadDataFromGas(), 2000);
+    setTimeout(() => {
+      loadDataFromGas().then(() => {
+        // 同期完了後、保留中の変更を解除
+        if (window._pendingTxChanges) window._pendingTxChanges.delete(id);
+      });
+    }, 4000);
   });
 }
 
@@ -2696,8 +2745,16 @@ async function deleteCurrentTx() {
   renderList();
   renderHome();
 
+  // 保留中の削除として記録
+  if (!window._pendingTxChanges) window._pendingTxChanges = new Map();
+  window._pendingTxChanges.set(deletingId, { type: 'delete' });
+
   postToGas({ action: 'deleteTransaction', id: deletingId }).then(() => {
-    setTimeout(() => loadDataFromGas(), 2000);
+    setTimeout(() => {
+      loadDataFromGas().then(() => {
+        if (window._pendingTxChanges) window._pendingTxChanges.delete(deletingId);
+      });
+    }, 4000);
   });
 }
 
@@ -2794,7 +2851,7 @@ async function updateAccount() {
   renderHome();
 
   postToGas({ action: 'saveAccount', account }).then(() => {
-    setTimeout(() => loadDataFromGas(), 2000);
+    setTimeout(() => loadDataFromGas(), 4000);
   });
 }
 
@@ -2889,7 +2946,7 @@ async function saveSpecialFee() {
   renderHome();
   showToast((editId ? '更新' : '追加') + 'しました ✓', 'success');
   postToGas({ action: 'saveSettings', settings: { annualSpecial: appData.settings.annualSpecial } })
-    .then(() => setTimeout(() => loadDataFromGas(), 2000));
+    .then(() => setTimeout(() => loadDataFromGas(), 4000));
 }
 
 // 削除
@@ -2900,7 +2957,7 @@ async function deleteSpecialFee(id) {
   renderHome();
   showToast('削除しました', 'success');
   postToGas({ action: 'saveSettings', settings: { annualSpecial: appData.settings.annualSpecial } })
-    .then(() => setTimeout(() => loadDataFromGas(), 2000));
+    .then(() => setTimeout(() => loadDataFromGas(), 4000));
 }
 
 // 設定画面に一覧描画
@@ -3017,7 +3074,7 @@ async function saveTemplate() {
   renderTemplateList();
   showToast((editId ? '更新' : '追加') + 'しました ✓', 'success');
   postToGas({ action: 'saveSettings', settings: { templates: appData.settings.templates } })
-    .then(() => setTimeout(() => loadDataFromGas(), 2000));
+    .then(() => setTimeout(() => loadDataFromGas(), 4000));
 }
 
 async function deleteTemplate(id) {
@@ -3026,7 +3083,7 @@ async function deleteTemplate(id) {
   renderTemplateList();
   showToast('削除しました', 'success');
   postToGas({ action: 'saveSettings', settings: { templates: appData.settings.templates } })
-    .then(() => setTimeout(() => loadDataFromGas(), 2000));
+    .then(() => setTimeout(() => loadDataFromGas(), 4000));
 }
 
 function renderTemplateList() {
@@ -3242,7 +3299,7 @@ async function saveCategory() {
   renderCategorySettings();
   showToast((editKey ? '更新' : '追加') + 'しました ✓', 'success');
   postToGas({ action: 'saveSettings', settings: { customCategories } })
-    .then(() => setTimeout(() => loadDataFromGas(), 2000));
+    .then(() => setTimeout(() => loadDataFromGas(), 4000));
 }
 
 // カテゴリを削除
@@ -3259,7 +3316,7 @@ async function deleteCategory(type, key) {
   renderCategorySettings();
   showToast('削除しました', 'success');
   postToGas({ action: 'saveSettings', settings: { customCategories } })
-    .then(() => setTimeout(() => loadDataFromGas(), 2000));
+    .then(() => setTimeout(() => loadDataFromGas(), 4000));
 }
 
 function setSyncState(state) {
