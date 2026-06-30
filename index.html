@@ -1673,30 +1673,57 @@ async function loadDataFromGas() {
 async function postToGas(body) {
   if (!gasUrl) { showToast('GAS URLを設定してください', 'error'); return null; }
   setSyncState('syncing');
+
+  const { action, ...rest } = body;
+  const jsonStr = JSON.stringify(rest);
+  const b64     = btoa(unescape(encodeURIComponent(jsonStr)));
+  const url     = gasUrl + '?action=' + encodeURIComponent(action) +
+                   '&payload=' + b64 + '&encoding=base64';
+
+  // ① まずfetch（CORSモード）で送信し、レスポンスを実際に確認する
   try {
-    const { action, ...rest } = body;
-    // Base64エンコード（絵文字・日本語対応）
-    const jsonStr = JSON.stringify(rest);
-    const b64     = btoa(unescape(encodeURIComponent(jsonStr)));
-
-    // no-cors fetchでGASに送信（リダイレクト対応）
-    // no-corsはレスポンスが読めないため、成功を楽観的に仮定してローカルを更新する
-    await fetch(gasUrl + '?action=' + encodeURIComponent(action) +
-      '&payload=' + b64 + '&encoding=base64', {
-      method: 'GET',
-      mode: 'no-cors',
-      redirect: 'follow'
-    });
-
-    // no-corsはレスポンスが読めないため、成功として扱いローカルデータを返す
-    setSyncState('ok');
-    return { ok: true };
+    const res  = await fetch(url, { method: 'GET', redirect: 'follow' });
+    const text = await res.text();
+    const json = parseGasResponse(text);
+    if (json && json.ok) {
+      setSyncState('ok');
+      return json;
+    }
+    if (json && json.error) {
+      setSyncState('error');
+      showToast('保存エラー: ' + json.error, 'error');
+      return json;
+    }
+    // jsonが取れなかった場合は②にフォールバック
+    throw new Error('レスポンス解析失敗');
 
   } catch (e) {
-    setSyncState('error');
-    showToast('通信エラー: ' + e.message, 'error');
-    return null;
+    // ② CORSでブロックされた場合はJSONPにフォールバック（結果を確認できる）
+    try {
+      const json2 = await gasJsonp({ action, payload: b64, encoding: 'base64' });
+      setSyncState(json2?.ok ? 'ok' : 'error');
+      if (!json2?.ok) showToast(json2?.error || '保存に失敗しました', 'error');
+      return json2;
+    } catch (e2) {
+      setSyncState('error');
+      showToast('保存に失敗しました（通信エラー）: ' + e2.message, 'error');
+      return null;
+    }
   }
+}
+
+// GASのレスポンス文字列をJSONとして解析（JSON / JSONP両対応）
+function parseGasResponse(text) {
+  if (!text) return null;
+  const trimmed = text.trim();
+  if (trimmed.startsWith('{')) {
+    try { return JSON.parse(trimmed); } catch { return null; }
+  }
+  const match = trimmed.match(/\((\{[\s\S]*\})\)/);
+  if (match) {
+    try { return JSON.parse(match[1]); } catch { return null; }
+  }
+  return null;
 }
 
 // GASの処理完了を確認してから最新データを取得（重要な操作後に呼ぶ）
@@ -2041,13 +2068,39 @@ async function submitTransaction() {
   showToast('記録しました ✓', 'success');
   showScreen('home');
 
-  // ③ バックグラウンドでGASに送信（失敗してもUIは止めない）
+  // ③ 保留中の新規追加として記録（GASからの再取得で消えないようにガード）
+  if (!window._pendingTxChanges) window._pendingTxChanges = new Map();
+  window._pendingTxChanges.set(tx.id, { type: 'update', data: { ...tx } });
+
+  // ④ バックグラウンドでGASに送信し、結果を確認する
   postToGas({ action: 'saveTransaction', transaction: tx }).then(result => {
-    if (!result?.ok) {
-      showToast('同期に失敗しました。再度お試しください', 'error');
+    if (result?.ok && result.transaction) {
+      // GASが発行した正式なIDに置き換え
+      const idx = appData.transactions.findIndex(t => t.id === tx.id);
+      if (idx !== -1) {
+        const officialTx = result.transaction;
+        appData.transactions[idx] = officialTx;
+        // 保留リストもIDを付け替え
+        window._pendingTxChanges.delete(tx.id);
+        window._pendingTxChanges.set(officialTx.id, { type: 'update', data: officialTx });
+        renderHome();
+        if (document.getElementById('screen-list').classList.contains('active')) renderList();
+      }
+    } else {
+      // 保存に失敗：ローカルから削除してユーザーに再試行を促す
+      appData.transactions = appData.transactions.filter(t => t.id !== tx.id);
+      window._pendingTxChanges.delete(tx.id);
+      renderHome();
+      showToast('⚠️ 保存に失敗しました。もう一度記録してください', 'error');
+      return;
     }
-    // 2秒後にGASの最新データで再同期（IDを正式なものに更新）
-    setTimeout(() => loadDataFromGas(), 4000);
+
+    setTimeout(() => {
+      loadDataFromGas().then(() => {
+        const finalId = result?.transaction?.id || tx.id;
+        if (window._pendingTxChanges) window._pendingTxChanges.delete(finalId);
+      });
+    }, 4000);
   });
 }
 
