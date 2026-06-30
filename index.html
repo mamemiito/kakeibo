@@ -1615,22 +1615,40 @@ async function postToGas(body) {
   setSyncState('syncing');
   try {
     const { action, ...rest } = body;
-    // 絵文字・日本語を含むデータをBase64で安全にエンコード
-    const jsonStr  = JSON.stringify(rest);
-    const b64      = btoa(unescape(encodeURIComponent(jsonStr)));
-    const json = await gasJsonp({
-      action,
-      payload: b64,
-      encoding: 'base64'
+    // Base64エンコード（絵文字・日本語対応）
+    const jsonStr = JSON.stringify(rest);
+    const b64     = btoa(unescape(encodeURIComponent(jsonStr)));
+
+    // no-cors fetchでGASに送信（リダイレクト対応）
+    // no-corsはレスポンスが読めないため、成功を楽観的に仮定してローカルを更新する
+    await fetch(gasUrl + '?action=' + encodeURIComponent(action) +
+      '&payload=' + b64 + '&encoding=base64', {
+      method: 'GET',
+      mode: 'no-cors',
+      redirect: 'follow'
     });
-    setSyncState(json.ok ? 'ok' : 'error');
-    if (!json.ok) showToast(json.error || 'エラーが発生しました', 'error');
-    return json;
+
+    // no-corsはレスポンスが読めないため、成功として扱いローカルデータを返す
+    setSyncState('ok');
+    return { ok: true };
+
   } catch (e) {
     setSyncState('error');
     showToast('通信エラー: ' + e.message, 'error');
     return null;
   }
+}
+
+// GASの処理完了を確認してから最新データを取得（重要な操作後に呼ぶ）
+async function postToGasAndReload(body, delayMs) {
+  const result = await postToGas(body);
+  if (result?.ok) {
+    // GASの処理完了を待ってから再読み込み（デフォルト2秒）
+    setTimeout(async () => {
+      await loadDataFromGas();
+    }, delayMs || 2000);
+  }
+  return result;
 }
 
 // ============================================================
@@ -1938,29 +1956,35 @@ async function submitTransaction() {
     ...(selectedType === 'transfer' ? { toAccountId: toAcct } : {}),
   };
 
-  const result = await postToGas({ action: 'saveTransaction', transaction: tx });
+  // no-cors方式：GASに送信しつつローカルデータを即時更新（楽観的更新）
+  tx.id        = 'tx_local_' + Date.now();
+  tx.createdAt = new Date().toISOString();
 
-  if (result?.ok) {
-    // ローカルデータにも反映
-    appData.transactions.push(result.transaction);
-    // カテゴリ学習データ更新
-    if (memo && selectedCategory) {
-      appData.categoryLearning[memo] = selectedCategory;
-    }
-    renderHome();
-    renderAccountSelects();
-    // フォームリセット
-    document.getElementById('inputAmount').value = '';
-    document.getElementById('inputMemo').value = '';
-    selectedCategory = '';
-    renderCategoryGrid(selectedType);
-    document.getElementById('aiBadge').style.display = 'none';
-    showToast('記録しました ✓', 'success');
-    showScreen('home');
+  // ① ローカルデータに即時追加（画面をすぐ更新）
+  appData.transactions.push(tx);
+  if (memo && selectedCategory) {
+    appData.categoryLearning[memo] = selectedCategory;
   }
 
-  btn.disabled = false;
+  // ② フォームリセット・画面遷移（待たずに即実行）
+  document.getElementById('inputAmount').value = '';
+  document.getElementById('inputMemo').value   = '';
+  selectedCategory = '';
+  renderCategoryGrid(selectedType);
+  document.getElementById('aiBadge').style.display = 'none';
+  btn.disabled    = false;
   btn.textContent = '記録する';
+  showToast('記録しました ✓', 'success');
+  showScreen('home');
+
+  // ③ バックグラウンドでGASに送信（失敗してもUIは止めない）
+  postToGas({ action: 'saveTransaction', transaction: tx }).then(result => {
+    if (!result?.ok) {
+      showToast('同期に失敗しました。再度お試しください', 'error');
+    }
+    // 2秒後にGASの最新データで再同期（IDを正式なものに更新）
+    setTimeout(() => loadDataFromGas(), 2000);
+  });
 }
 
 // ============================================================
@@ -2005,15 +2029,17 @@ async function saveAccount() {
     initialBalance: balance,
   };
 
-  const result = await postToGas({ action: 'saveAccount', account });
-  if (result?.ok) {
-    appData.accounts.push(result.account);
-    renderAccountList();
-    renderAccountSelects();
-    renderAccountSettings();
-    document.getElementById('addAccountModal').classList.remove('open');
-    showToast('口座を追加しました ✓', 'success');
-  }
+  // 楽観的更新
+  appData.accounts.push(account);
+  renderAccountList();
+  renderAccountSelects();
+  renderAccountSettings();
+  document.getElementById('addAccountModal').classList.remove('open');
+  showToast('口座を追加しました ✓', 'success');
+
+  postToGas({ action: 'saveAccount', account }).then(() => {
+    setTimeout(() => loadDataFromGas(), 2000);
+  });
 }
 
 function renderAccountSettings() {
@@ -2043,14 +2069,14 @@ function renderAccountSettings() {
 
 async function deleteAccount(id) {
   if (!confirm('この口座を削除しますか？')) return;
-  const result = await postToGas({ action: 'deleteAccount', id });
-  if (result?.ok) {
-    appData.accounts = appData.accounts.filter(a => a.id !== id);
-    renderAccountList();
-    renderAccountSelects();
-    renderAccountSettings();
-    showToast('削除しました', 'success');
-  }
+  appData.accounts = appData.accounts.filter(a => a.id !== id);
+  renderAccountList();
+  renderAccountSelects();
+  renderAccountSettings();
+  showToast('削除しました', 'success');
+  postToGas({ action: 'deleteAccount', id }).then(() => {
+    setTimeout(() => loadDataFromGas(), 2000);
+  });
 }
 
 // ============================================================
@@ -2312,30 +2338,36 @@ async function confirmReceipt() {
   const accountId = document.getElementById('rcpAccount').value;
   const items     = (window.rcpItems || []).filter(i => i.name && i.price > 0);
 
-  const result = await postToGas({
-    action:    'confirmReceipt',
-    receiptId: currentReceipt.id,
+  // 楽観的更新：ローカルデータを即時反映
+  const now = new Date().toISOString();
+  const addedTxs = items.map(item => ({
+    id: 'tx_local_' + Date.now() + '_' + Math.random().toString(36).slice(2,5),
+    date: currentReceipt.date,
+    type: 'expense',
+    amount: Math.round((item.price || 0) * (item.quantity || 1)),
+    memo: item.name,
+    category: item.category || 'その他',
     accountId,
-    items
-  });
+    receiptId: currentReceipt.id,
+    createdAt: now
+  }));
+  addedTxs.forEach(tx => appData.transactions.push(tx));
+  const r = (appData.receipts || []).find(r => r.id === currentReceipt.id);
+  if (r) r.status = 'confirmed';
 
-  if (result?.ok) {
-    // ローカルデータに反映
-    result.transactions.forEach(tx => appData.transactions.push(tx));
-    const r = appData.receipts.find(r => r.id === currentReceipt.id);
-    if (r) r.status = 'confirmed';
+  showToast(items.length + '件の品目を登録しました ✓', 'success');
+  document.getElementById('receiptModal').classList.remove('open');
 
-    showToast(`${items.length}件の品目を登録しました ✓`, 'success');
-    document.getElementById('receiptModal').classList.remove('open');
-
-    // 次の未確認レシートがあれば続けて表示
-    pendingReceipts = pendingReceipts.filter(r => r.id !== currentReceipt.id);
-    if (pendingReceipts.length > 0) {
-      setTimeout(() => openReceiptModal(0), 500);
-    } else {
-      renderHome();
-    }
+  pendingReceipts = pendingReceipts.filter(r => r.id !== currentReceipt.id);
+  if (pendingReceipts.length > 0) {
+    setTimeout(() => openReceiptModal(0), 500);
+  } else {
+    renderHome();
   }
+
+  // バックグラウンドでGASに送信
+  postToGas({ action: 'confirmReceipt', receiptId: currentReceipt.id, accountId, items })
+    .then(() => setTimeout(() => loadDataFromGas(), 2000));
 }
 
 // 破棄
@@ -2343,14 +2375,15 @@ async function deleteCurrentReceipt() {
   if (!currentReceipt) return;
   if (!confirm('このレシートを登録せずに破棄しますか？')) return;
 
-  const result = await postToGas({ action: 'deleteReceipt', receiptId: currentReceipt.id });
-  if (result?.ok) {
-    appData.receipts = (appData.receipts || []).filter(r => r.id !== currentReceipt.id);
-    pendingReceipts  = pendingReceipts.filter(r => r.id !== currentReceipt.id);
-    document.getElementById('receiptModal').classList.remove('open');
-    showToast('破棄しました', 'success');
-    renderHome();
-  }
+  const deletingReceiptId = currentReceipt.id;
+  appData.receipts = (appData.receipts || []).filter(r => r.id !== deletingReceiptId);
+  pendingReceipts  = pendingReceipts.filter(r => r.id !== deletingReceiptId);
+  document.getElementById('receiptModal').classList.remove('open');
+  showToast('破棄しました', 'success');
+  renderHome();
+
+  postToGas({ action: 'deleteReceipt', receiptId: deletingReceiptId })
+    .then(() => setTimeout(() => loadDataFromGas(), 2000));
 }
 
 // renderHome に追記（既存関数の末尾に呼び出し追加）
@@ -2609,30 +2642,33 @@ async function saveEditedTx() {
   if (type !== 'transfer' && !editingTxCategory) { showToast('カテゴリを選択してください', 'error'); return; }
 
   const updated = { id, type, date, amount, memo, category: editingTxCategory, accountId: account };
-  const result  = await postToGas({ action: 'updateTransaction', transaction: updated });
+  // 楽観的更新
+  const idx = appData.transactions.findIndex(t => t.id === id);
+  if (idx !== -1) appData.transactions[idx] = { ...appData.transactions[idx], ...updated };
+  document.getElementById('txDetailModal').classList.remove('open');
+  showToast('更新しました ✓', 'success');
+  renderList();
+  renderHome();
 
-  if (result?.ok) {
-    const idx = appData.transactions.findIndex(t => t.id === id);
-    if (idx !== -1) appData.transactions[idx] = { ...appData.transactions[idx], ...updated };
-    document.getElementById('txDetailModal').classList.remove('open');
-    showToast('更新しました ✓', 'success');
-    renderList();
-    renderHome();
-  }
+  postToGas({ action: 'updateTransaction', transaction: updated }).then(() => {
+    setTimeout(() => loadDataFromGas(), 2000);
+  });
 }
 
 async function deleteCurrentTx() {
   if (!currentTxId) return;
   if (!confirm('この取引を削除しますか？')) return;
 
-  const result = await postToGas({ action: 'deleteTransaction', id: currentTxId });
-  if (result?.ok) {
-    appData.transactions = appData.transactions.filter(t => t.id !== currentTxId);
-    document.getElementById('txDetailModal').classList.remove('open');
-    showToast('削除しました', 'success');
-    renderList();
-    renderHome();
-  }
+  const deletingId = currentTxId;
+  appData.transactions = appData.transactions.filter(t => t.id !== deletingId);
+  document.getElementById('txDetailModal').classList.remove('open');
+  showToast('削除しました', 'success');
+  renderList();
+  renderHome();
+
+  postToGas({ action: 'deleteTransaction', id: deletingId }).then(() => {
+    setTimeout(() => loadDataFromGas(), 2000);
+  });
 }
 
 // ============================================================
@@ -2717,18 +2753,19 @@ async function updateAccount() {
   if (!name) { showToast('口座名を入力してください', 'error'); return; }
 
   const account = { id, name, type, color: editingAccountColor, initialBalance: balance };
-  const result  = await postToGas({ action: 'saveAccount', account });
+  // 楽観的更新
+  const idx2 = appData.accounts.findIndex(a => a.id === id);
+  if (idx2 !== -1) appData.accounts[idx2] = { ...appData.accounts[idx2], ...account };
+  renderAccountList();
+  renderAccountSelects();
+  renderAccountSettings();
+  document.getElementById('editAccountModal').classList.remove('open');
+  showToast('口座を更新しました ✓', 'success');
+  renderHome();
 
-  if (result?.ok) {
-    const idx = appData.accounts.findIndex(a => a.id === id);
-    if (idx !== -1) appData.accounts[idx] = { ...appData.accounts[idx], ...account };
-    renderAccountList();
-    renderAccountSelects();
-    renderAccountSettings();
-    document.getElementById('editAccountModal').classList.remove('open');
-    showToast('口座を更新しました ✓', 'success');
-    renderHome();
-  }
+  postToGas({ action: 'saveAccount', account }).then(() => {
+    setTimeout(() => loadDataFromGas(), 2000);
+  });
 }
 
 // ============================================================
@@ -2817,28 +2854,23 @@ async function saveSpecialFee() {
   if (idx !== -1) appData.settings.annualSpecial[idx] = item;
   else            appData.settings.annualSpecial.push(item);
 
-  const result = await postToGas({
-    action: 'saveSettings',
-    settings: { annualSpecial: appData.settings.annualSpecial }
-  });
-
-  if (result?.ok) {
-    document.getElementById('specialFeeModal').classList.remove('open');
-    renderSpecialFeeList();
-    renderHome();
-    showToast((editId ? '更新' : '追加') + 'しました ✓', 'success');
-  }
+  document.getElementById('specialFeeModal').classList.remove('open');
+  renderSpecialFeeList();
+  renderHome();
+  showToast((editId ? '更新' : '追加') + 'しました ✓', 'success');
+  postToGas({ action: 'saveSettings', settings: { annualSpecial: appData.settings.annualSpecial } })
+    .then(() => setTimeout(() => loadDataFromGas(), 2000));
 }
 
 // 削除
 async function deleteSpecialFee(id) {
   if (!confirm('この特別費を削除しますか？')) return;
   appData.settings.annualSpecial = (appData.settings.annualSpecial || []).filter(i => i.id !== id);
-  const result = await postToGas({
-    action: 'saveSettings',
-    settings: { annualSpecial: appData.settings.annualSpecial }
-  });
-  if (result?.ok) { renderSpecialFeeList(); renderHome(); showToast('削除しました', 'success'); }
+  renderSpecialFeeList();
+  renderHome();
+  showToast('削除しました', 'success');
+  postToGas({ action: 'saveSettings', settings: { annualSpecial: appData.settings.annualSpecial } })
+    .then(() => setTimeout(() => loadDataFromGas(), 2000));
 }
 
 // 設定画面に一覧描画
@@ -2951,26 +2983,20 @@ async function saveTemplate() {
   if (idx !== -1) appData.settings.templates[idx] = tpl;
   else            appData.settings.templates.push(tpl);
 
-  const result = await postToGas({
-    action: 'saveSettings',
-    settings: { templates: appData.settings.templates }
-  });
-
-  if (result?.ok) {
-    document.getElementById('templateModal').classList.remove('open');
-    renderTemplateList();
-    showToast((editId ? '更新' : '追加') + 'しました ✓', 'success');
-  }
+  document.getElementById('templateModal').classList.remove('open');
+  renderTemplateList();
+  showToast((editId ? '更新' : '追加') + 'しました ✓', 'success');
+  postToGas({ action: 'saveSettings', settings: { templates: appData.settings.templates } })
+    .then(() => setTimeout(() => loadDataFromGas(), 2000));
 }
 
 async function deleteTemplate(id) {
   if (!confirm('このテンプレートを削除しますか？')) return;
   appData.settings.templates = (appData.settings.templates || []).filter(t => t.id !== id);
-  const result = await postToGas({
-    action: 'saveSettings',
-    settings: { templates: appData.settings.templates }
-  });
-  if (result?.ok) { renderTemplateList(); showToast('削除しました', 'success'); }
+  renderTemplateList();
+  showToast('削除しました', 'success');
+  postToGas({ action: 'saveSettings', settings: { templates: appData.settings.templates } })
+    .then(() => setTimeout(() => loadDataFromGas(), 2000));
 }
 
 function renderTemplateList() {
@@ -3182,16 +3208,11 @@ async function saveCategory() {
     expense: CATEGORY_MAP.expense,
     income:  CATEGORY_MAP.income,
   };
-  const result = await postToGas({
-    action: 'saveSettings',
-    settings: { customCategories }
-  });
-
-  if (result?.ok) {
-    document.getElementById('catModal').classList.remove('open');
-    renderCategorySettings();
-    showToast((editKey ? '更新' : '追加') + 'しました ✓', 'success');
-  }
+  document.getElementById('catModal').classList.remove('open');
+  renderCategorySettings();
+  showToast((editKey ? '更新' : '追加') + 'しました ✓', 'success');
+  postToGas({ action: 'saveSettings', settings: { customCategories } })
+    .then(() => setTimeout(() => loadDataFromGas(), 2000));
 }
 
 // カテゴリを削除
@@ -3205,15 +3226,10 @@ async function deleteCategory(type, key) {
     expense: CATEGORY_MAP.expense,
     income:  CATEGORY_MAP.income,
   };
-  const result = await postToGas({
-    action: 'saveSettings',
-    settings: { customCategories }
-  });
-
-  if (result?.ok) {
-    renderCategorySettings();
-    showToast('削除しました', 'success');
-  }
+  renderCategorySettings();
+  showToast('削除しました', 'success');
+  postToGas({ action: 'saveSettings', settings: { customCategories } })
+    .then(() => setTimeout(() => loadDataFromGas(), 2000));
 }
 
 function setSyncState(state) {
