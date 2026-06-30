@@ -1669,6 +1669,13 @@ async function loadDataFromGas() {
         console.log('[LOAD] 保留中の変更なし');
       }
 
+      // 保留中の設定変更（カテゴリ・特別費・テンプレート等）がGASの古い設定で
+      // 上書きされないようにガード
+      if (window._pendingSettings) {
+        console.log('[LOAD] 保留中の設定変更を適用:', Object.keys(window._pendingSettings));
+        freshData.settings = { ...freshData.settings, ...window._pendingSettings };
+      }
+
       appData = freshData;
       console.log('%c[LOAD] appData更新後の取引件数:', 'color:green;font-weight:bold', appData.transactions.length);
 
@@ -1698,6 +1705,26 @@ async function loadDataFromGas() {
   } finally {
     hideLoading();
   }
+}
+
+// 設定変更を保留リストに登録し、GASに保存後も一定時間ガードする共通ヘルパー
+function saveSettingsWithGuard(settingsPatch) {
+  if (!window._pendingSettings) window._pendingSettings = {};
+  Object.assign(window._pendingSettings, settingsPatch);
+  console.log('[SETTINGS] 保留中の設定として登録:', Object.keys(settingsPatch));
+
+  postToGas({ action: 'saveSettings', settings: settingsPatch }).then(result => {
+    console.log('[SETTINGS] GAS保存結果:', result);
+    setTimeout(() => {
+      loadDataFromGas().then(() => {
+        // 保留対象のキーだけ解除（他の保留中設定は維持）
+        Object.keys(settingsPatch).forEach(key => {
+          if (window._pendingSettings) delete window._pendingSettings[key];
+        });
+        console.log('[SETTINGS] 保留解除完了:', Object.keys(settingsPatch));
+      });
+    }, 4000);
+  });
 }
 
 async function postToGas(body) {
@@ -3055,8 +3082,7 @@ async function saveSpecialFee() {
   renderSpecialFeeList();
   renderHome();
   showToast((editId ? '更新' : '追加') + 'しました ✓', 'success');
-  postToGas({ action: 'saveSettings', settings: { annualSpecial: appData.settings.annualSpecial } })
-    .then(() => setTimeout(() => loadDataFromGas(), 4000));
+  saveSettingsWithGuard({ annualSpecial: appData.settings.annualSpecial });
 }
 
 // 削除
@@ -3066,8 +3092,7 @@ async function deleteSpecialFee(id) {
   renderSpecialFeeList();
   renderHome();
   showToast('削除しました', 'success');
-  postToGas({ action: 'saveSettings', settings: { annualSpecial: appData.settings.annualSpecial } })
-    .then(() => setTimeout(() => loadDataFromGas(), 4000));
+  saveSettingsWithGuard({ annualSpecial: appData.settings.annualSpecial });
 }
 
 // 設定画面に一覧描画
@@ -3183,8 +3208,7 @@ async function saveTemplate() {
   document.getElementById('templateModal').classList.remove('open');
   renderTemplateList();
   showToast((editId ? '更新' : '追加') + 'しました ✓', 'success');
-  postToGas({ action: 'saveSettings', settings: { templates: appData.settings.templates } })
-    .then(() => setTimeout(() => loadDataFromGas(), 4000));
+  saveSettingsWithGuard({ templates: appData.settings.templates });
 }
 
 async function deleteTemplate(id) {
@@ -3192,8 +3216,7 @@ async function deleteTemplate(id) {
   appData.settings.templates = (appData.settings.templates || []).filter(t => t.id !== id);
   renderTemplateList();
   showToast('削除しました', 'success');
-  postToGas({ action: 'saveSettings', settings: { templates: appData.settings.templates } })
-    .then(() => setTimeout(() => loadDataFromGas(), 4000));
+  saveSettingsWithGuard({ templates: appData.settings.templates });
 }
 
 function renderTemplateList() {
@@ -3408,8 +3431,7 @@ async function saveCategory() {
   document.getElementById('catModal').classList.remove('open');
   renderCategorySettings();
   showToast((editKey ? '更新' : '追加') + 'しました ✓', 'success');
-  postToGas({ action: 'saveSettings', settings: { customCategories } })
-    .then(() => setTimeout(() => loadDataFromGas(), 4000));
+  saveSettingsWithGuard({ customCategories });
 }
 
 // カテゴリを削除
@@ -3425,8 +3447,7 @@ async function deleteCategory(type, key) {
   };
   renderCategorySettings();
   showToast('削除しました', 'success');
-  postToGas({ action: 'saveSettings', settings: { customCategories } })
-    .then(() => setTimeout(() => loadDataFromGas(), 4000));
+  saveSettingsWithGuard({ customCategories });
 }
 
 function setSyncState(state) {
