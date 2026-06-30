@@ -1612,10 +1612,12 @@ async function loadDataFromGas() {
   if (!gasUrl) { hideLoading(); return; }
   setSyncState('syncing');
   try {
-    // fetchでGASにアクセス（リダイレクトに自動追従）
-    const res  = await fetch(gasUrl + '?action=getData', {
+    // fetchでGASにアクセス（リダイレクトに自動追従、キャッシュ回避のため毎回ユニークなパラメータを付与）
+    const cacheBuster = '_t=' + Date.now() + Math.random().toString(36).slice(2,6);
+    const res  = await fetch(gasUrl + '?action=getData&' + cacheBuster, {
       method: 'GET',
-      redirect: 'follow'
+      redirect: 'follow',
+      cache: 'no-store'
     });
     const text = await res.text();
 
