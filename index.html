@@ -1609,54 +1609,82 @@ function gasJsonp(params, timeoutMs) {
 }
 
 async function loadDataFromGas() {
-  if (!gasUrl) { hideLoading(); return; }
+  console.log('%c[LOAD] loadDataFromGas 開始', 'color:blue;font-weight:bold');
+  if (!gasUrl) { console.log('[LOAD] gasUrl未設定のため中断'); hideLoading(); return; }
   setSyncState('syncing');
   try {
-    // fetchでGASにアクセス（リダイレクトに自動追従、キャッシュ回避のため毎回ユニークなパラメータを付与）
     const cacheBuster = '_t=' + Date.now() + Math.random().toString(36).slice(2,6);
-    const res  = await fetch(gasUrl + '?action=getData&' + cacheBuster, {
+    const fullUrl = gasUrl + '?action=getData&' + cacheBuster;
+    console.log('[LOAD] リクエストURL:', fullUrl);
+
+    const res  = await fetch(fullUrl, {
       method: 'GET',
       redirect: 'follow',
       cache: 'no-store'
     });
-    const text = await res.text();
+    console.log('[LOAD] HTTPステータス:', res.status, res.statusText);
 
-    // GASはJSONPコールバック形式で返す場合があるので両方対応
+    const text = await res.text();
+    console.log('[LOAD] 生レスポンス文字数:', text.length);
+    console.log('[LOAD] 生レスポンス先頭300文字:', text.slice(0, 300));
+
     let json;
     if (text.trim().startsWith('{')) {
       json = JSON.parse(text);
+      console.log('[LOAD] JSON形式として解析成功');
     } else {
-      // JSONP形式 "callback({...})" からJSONを抽出
       const match = text.match(/\((\{[\s\S]*\})\)/);
       json = match ? JSON.parse(match[1]) : null;
+      console.log('[LOAD] JSONP形式として解析:', json ? '成功' : '失敗');
     }
 
     if (json && json.ok) {
       const freshData = json.data;
+      console.log('%c[LOAD] 取得した取引件数:', 'color:green', freshData.transactions?.length);
+      console.log('[LOAD] 取得データのupdatedAt:', freshData.updatedAt);
+      console.log('[LOAD] 取得した取引一覧（最新5件）:',
+        (freshData.transactions || []).slice(-5).map(t => t.date + ' ' + t.memo + ' ¥' + t.amount));
 
-      // 直前にローカルで編集・削除した取引がGASの古いデータで復活しないようにガード
+      console.log('[LOAD] appData(更新前)の取引件数:', appData?.transactions?.length);
+
       if (window._pendingTxChanges && window._pendingTxChanges.size > 0) {
+        console.log('[LOAD] 保留中の変更件数:', window._pendingTxChanges.size,
+          [...window._pendingTxChanges.keys()]);
         window._pendingTxChanges.forEach((change, txId) => {
           if (change.type === 'update') {
             const idx = freshData.transactions.findIndex(t => t.id === txId);
-            if (idx !== -1) freshData.transactions[idx] = change.data;
+            if (idx !== -1) {
+              freshData.transactions[idx] = change.data;
+              console.log('[LOAD] 保留中update適用:', txId);
+            } else {
+              // GASにまだ届いていない新規追加 → freshDataに追加し直す
+              freshData.transactions.push(change.data);
+              console.log('%c[LOAD] 警告：GAS未反映の取引をローカルから復元', 'color:orange', txId);
+            }
           } else if (change.type === 'delete') {
             freshData.transactions = freshData.transactions.filter(t => t.id !== txId);
           }
         });
+      } else {
+        console.log('[LOAD] 保留中の変更なし');
       }
 
       appData = freshData;
+      console.log('%c[LOAD] appData更新後の取引件数:', 'color:green;font-weight:bold', appData.transactions.length);
+
       loadCustomCategories();
       renderHome();
       renderAccountSelects();
       renderAccountSettings();
       if (document.getElementById('screen-list').classList.contains('active')) renderList();
       setSyncState('ok');
+      console.log('%c[LOAD] loadDataFromGas 完了', 'color:blue;font-weight:bold');
     } else {
+      console.error('[LOAD] エラー応答:', json);
       throw new Error((json && json.error) || '取得失敗');
     }
   } catch (e) {
+    console.error('%c[LOAD] 例外発生:', 'color:red;font-weight:bold', e);
     setSyncState('error');
     showToast('接続エラー。設定画面でGAS URLを確認してください。', 'error');
     if (!appData) {
@@ -1673,6 +1701,9 @@ async function loadDataFromGas() {
 }
 
 async function postToGas(body) {
+  console.log('%c[POST] postToGas 開始 action=' + body.action, 'color:purple;font-weight:bold');
+  console.log('[POST] 送信内容:', JSON.stringify(body));
+
   if (!gasUrl) { showToast('GAS URLを設定してください', 'error'); return null; }
   setSyncState('syncing');
 
@@ -1681,32 +1712,47 @@ async function postToGas(body) {
   const b64     = btoa(unescape(encodeURIComponent(jsonStr)));
   const url     = gasUrl + '?action=' + encodeURIComponent(action) +
                    '&payload=' + b64 + '&encoding=base64';
+  console.log('[POST] リクエストURL長:', url.length, '文字');
 
   // ① まずfetch（CORSモード）で送信し、レスポンスを実際に確認する
   try {
+    console.log('[POST] ①fetch試行中...');
     const res  = await fetch(url, { method: 'GET', redirect: 'follow' });
+    console.log('[POST] ①fetch成功 status=', res.status);
     const text = await res.text();
+    console.log('[POST] ①レスポンス先頭200文字:', text.slice(0, 200));
     const json = parseGasResponse(text);
+    console.log('[POST] ①解析結果:', json);
+
     if (json && json.ok) {
+      console.log('%c[POST] ①fetch経由で保存成功確認', 'color:green;font-weight:bold');
       setSyncState('ok');
       return json;
     }
     if (json && json.error) {
+      console.error('[POST] GASがエラーを返した:', json.error);
       setSyncState('error');
       showToast('保存エラー: ' + json.error, 'error');
       return json;
     }
-    // jsonが取れなかった場合は②にフォールバック
+    console.warn('[POST] ①レスポンス解析失敗、②JSONPにフォールバック');
     throw new Error('レスポンス解析失敗');
 
   } catch (e) {
-    // ② CORSでブロックされた場合はJSONPにフォールバック（結果を確認できる）
+    console.warn('[POST] ①fetch失敗:', e.message, '→ ②JSONPで再試行');
     try {
       const json2 = await gasJsonp({ action, payload: b64, encoding: 'base64' });
+      console.log('[POST] ②JSONP結果:', json2);
+      if (json2?.ok) {
+        console.log('%c[POST] ②JSONP経由で保存成功確認', 'color:green;font-weight:bold');
+      } else {
+        console.error('%c[POST] ②JSONPも失敗', 'color:red;font-weight:bold', json2);
+      }
       setSyncState(json2?.ok ? 'ok' : 'error');
       if (!json2?.ok) showToast(json2?.error || '保存に失敗しました', 'error');
       return json2;
     } catch (e2) {
+      console.error('%c[POST] ①②両方失敗。保存できていません', 'color:red;font-weight:bold', e2);
       setSyncState('error');
       showToast('保存に失敗しました（通信エラー）: ' + e2.message, 'error');
       return null;
@@ -2070,26 +2116,31 @@ async function submitTransaction() {
   showToast('記録しました ✓', 'success');
   showScreen('home');
 
+  console.log('%c[SUBMIT] ローカルに即時追加した取引:', 'color:blue;font-weight:bold', tx);
+
   // ③ 保留中の新規追加として記録（GASからの再取得で消えないようにガード）
   if (!window._pendingTxChanges) window._pendingTxChanges = new Map();
   window._pendingTxChanges.set(tx.id, { type: 'update', data: { ...tx } });
+  console.log('[SUBMIT] 保留リストに登録。現在の保留件数:', window._pendingTxChanges.size);
 
   // ④ バックグラウンドでGASに送信し、結果を確認する
   postToGas({ action: 'saveTransaction', transaction: tx }).then(result => {
+    console.log('[SUBMIT] GASからの応答:', result);
+
     if (result?.ok && result.transaction) {
-      // GASが発行した正式なIDに置き換え
       const idx = appData.transactions.findIndex(t => t.id === tx.id);
+      console.log('[SUBMIT] ローカル内の該当取引インデックス:', idx);
       if (idx !== -1) {
         const officialTx = result.transaction;
         appData.transactions[idx] = officialTx;
-        // 保留リストもIDを付け替え
         window._pendingTxChanges.delete(tx.id);
         window._pendingTxChanges.set(officialTx.id, { type: 'update', data: officialTx });
+        console.log('%c[SUBMIT] 正式ID' + officialTx.id + 'に差し替え完了', 'color:green');
         renderHome();
         if (document.getElementById('screen-list').classList.contains('active')) renderList();
       }
     } else {
-      // 保存に失敗：ローカルから削除してユーザーに再試行を促す
+      console.error('%c[SUBMIT] 保存失敗。ローカルから削除します', 'color:red;font-weight:bold', result);
       appData.transactions = appData.transactions.filter(t => t.id !== tx.id);
       window._pendingTxChanges.delete(tx.id);
       renderHome();
@@ -2098,9 +2149,13 @@ async function submitTransaction() {
     }
 
     setTimeout(() => {
+      console.log('[SUBMIT] 4秒後の再同期を実行します');
       loadDataFromGas().then(() => {
         const finalId = result?.transaction?.id || tx.id;
-        if (window._pendingTxChanges) window._pendingTxChanges.delete(finalId);
+        if (window._pendingTxChanges) {
+          window._pendingTxChanges.delete(finalId);
+          console.log('[SUBMIT] 保留リストから削除完了。残り件数:', window._pendingTxChanges.size);
+        }
       });
     }, 4000);
   });
