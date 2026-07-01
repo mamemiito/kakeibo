@@ -1737,7 +1737,6 @@ function saveSettingsWithGuard(settingsPatch) {
 
 async function postToGas(body) {
   console.log('%c[POST] postToGas 開始 action=' + body.action, 'color:purple;font-weight:bold');
-  console.log('[POST] 送信内容:', JSON.stringify(body));
 
   if (!gasUrl) { showToast('GAS URLを設定してください', 'error'); return null; }
   setSyncState('syncing');
@@ -1745,51 +1744,55 @@ async function postToGas(body) {
   const { action, ...rest } = body;
   const jsonStr = JSON.stringify(rest);
   const b64     = btoa(unescape(encodeURIComponent(jsonStr)));
-  const url     = gasUrl + '?action=' + encodeURIComponent(action) +
-                   '&payload=' + b64 + '&encoding=base64';
-  console.log('[POST] リクエストURL長:', url.length, '文字');
 
-  // ① まずfetch（CORSモード）で送信し、レスポンスを実際に確認する
+  // フォームデータとしてPOSTで送信（URL長制限を回避）
+  const formData = new URLSearchParams();
+  formData.append('action',   action);
+  formData.append('payload',  b64);
+  formData.append('encoding', 'base64');
+
+  console.log('[POST] payload長:', b64.length, '文字');
+
   try {
-    console.log('[POST] ①fetch試行中...');
-    const res  = await fetch(url, { method: 'GET', redirect: 'follow' });
-    console.log('[POST] ①fetch成功 status=', res.status);
+    console.log('[POST] POSTで送信中...');
+    const res  = await fetch(gasUrl, {
+      method:   'POST',
+      redirect: 'follow',
+      headers:  { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body:     formData.toString()
+    });
+    console.log('[POST] ステータス:', res.status);
     const text = await res.text();
-    console.log('[POST] ①レスポンス先頭200文字:', text.slice(0, 200));
+    console.log('[POST] レスポンス先頭200文字:', text.slice(0, 200));
     const json = parseGasResponse(text);
-    console.log('[POST] ①解析結果:', json);
+    console.log('[POST] 解析結果:', json);
 
     if (json && json.ok) {
-      console.log('%c[POST] ①fetch経由で保存成功確認', 'color:green;font-weight:bold');
+      console.log('%c[POST] POST経由で保存成功確認', 'color:green;font-weight:bold');
       setSyncState('ok');
       return json;
     }
     if (json && json.error) {
-      console.error('[POST] GASがエラーを返した:', json.error);
+      console.error('[POST] GASエラー:', json.error);
       setSyncState('error');
       showToast('保存エラー: ' + json.error, 'error');
       return json;
     }
-    console.warn('[POST] ①レスポンス解析失敗、②JSONPにフォールバック');
-    throw new Error('レスポンス解析失敗');
+    // POSTが失敗した場合はJSONPにフォールバック
+    throw new Error('POSTレスポンス解析失敗');
 
   } catch (e) {
-    console.warn('[POST] ①fetch失敗:', e.message, '→ ②JSONPで再試行');
+    console.warn('[POST] POST失敗:', e.message, '→ JSONPで再試行');
     try {
       const json2 = await gasJsonp({ action, payload: b64, encoding: 'base64' });
-      console.log('[POST] ②JSONP結果:', json2);
-      if (json2?.ok) {
-        console.log('%c[POST] ②JSONP経由で保存成功確認', 'color:green;font-weight:bold');
-      } else {
-        console.error('%c[POST] ②JSONPも失敗', 'color:red;font-weight:bold', json2);
-      }
+      console.log('[POST] JSONPフォールバック結果:', json2);
       setSyncState(json2?.ok ? 'ok' : 'error');
       if (!json2?.ok) showToast(json2?.error || '保存に失敗しました', 'error');
       return json2;
     } catch (e2) {
-      console.error('%c[POST] ①②両方失敗。保存できていません', 'color:red;font-weight:bold', e2);
+      console.error('%c[POST] POST・JSONP両方失敗', 'color:red;font-weight:bold', e2);
       setSyncState('error');
-      showToast('保存に失敗しました（通信エラー）: ' + e2.message, 'error');
+      showToast('保存に失敗しました: ' + e2.message, 'error');
       return null;
     }
   }
