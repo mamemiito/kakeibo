@@ -1669,14 +1669,17 @@ async function loadDataFromGas() {
         console.log('[LOAD] 保留中の変更なし');
       }
 
-      // 保留中の設定変更（カテゴリ・特別費・テンプレート等）がGASの古い設定で
-      // 上書きされないようにガード
-      if (window._pendingSettings) {
-        console.log('[LOAD] 保留中の設定変更を適用:', Object.keys(window._pendingSettings));
-        freshData.settings = { ...freshData.settings, ...window._pendingSettings };
-      }
-
+      // settings はsaveSettingsWithGuardで直接更新済みのため
+      // loadDataFromGasではtransactions・accountsのみ反映し、
+      // settingsはローカルの最新状態を維持する
+      const currentSettings = appData?.settings;
       appData = freshData;
+      if (currentSettings) {
+        // ローカルのsettingsをGASの取引データと組み合わせる
+        // （settingsはsaveSettingsWithGuardが管理するため上書きしない）
+        appData.settings = currentSettings;
+        console.log('[LOAD] settingsはローカル状態を維持（上書きしない）');
+      }
       console.log('%c[LOAD] appData更新後の取引件数:', 'color:green;font-weight:bold', appData.transactions.length);
 
       loadCustomCategories();
@@ -1709,21 +1712,26 @@ async function loadDataFromGas() {
 
 // 設定変更を保留リストに登録し、GASに保存後も一定時間ガードする共通ヘルパー
 function saveSettingsWithGuard(settingsPatch) {
-  if (!window._pendingSettings) window._pendingSettings = {};
-  Object.assign(window._pendingSettings, settingsPatch);
-  console.log('[SETTINGS] 保留中の設定として登録:', Object.keys(settingsPatch));
+  console.log('[SETTINGS] 保存開始:', Object.keys(settingsPatch));
 
+  // ① ローカルの appData.settings を即時更新（楽観的更新）
+  if (!appData.settings) appData.settings = {};
+  Object.keys(settingsPatch).forEach(key => {
+    appData.settings[key] = settingsPatch[key];
+  });
+
+  // ② GASに保存（バックグラウンド）
   postToGas({ action: 'saveSettings', settings: settingsPatch }).then(result => {
     console.log('[SETTINGS] GAS保存結果:', result);
-    setTimeout(() => {
-      loadDataFromGas().then(() => {
-        // 保留対象のキーだけ解除（他の保留中設定は維持）
-        Object.keys(settingsPatch).forEach(key => {
-          if (window._pendingSettings) delete window._pendingSettings[key];
-        });
-        console.log('[SETTINGS] 保留解除完了:', Object.keys(settingsPatch));
-      });
-    }, 4000);
+    if (!result?.ok) {
+      showToast('設定の保存に失敗しました', 'error');
+      console.error('[SETTINGS] 保存失敗:', result);
+    } else {
+      console.log('%c[SETTINGS] 保存成功確認', 'color:green;font-weight:bold');
+      // ③ GAS保存成功後は loadDataFromGas を呼ばない
+      //    → appData.settingsはすでにローカルで正しい状態
+      //    → 取引データだけが必要な場合は別途同期
+    }
   });
 }
 
