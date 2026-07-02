@@ -2089,20 +2089,15 @@ function applyAutoCategory(cat, source) {
 }
 
 async function classifyWithAI(memo) {
+  // GAS経由でAI分類を呼び出す（直接APIはCORSでブロックされるため）
   try {
     const cats = (CATEGORY_MAP[selectedType] || CATEGORY_MAP.expense).map(c => c.label).join('、');
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 50,
-        system: `あなたは家計簿のカテゴリ分類AIです。ユーザーのメモ・店名から最も適切なカテゴリを1つだけ答えてください。カテゴリ一覧: ${cats}。カテゴリ名だけを返してください。`,
-        messages: [{ role: 'user', content: memo }]
-      })
+    const result = await postToGas({
+      action: 'classifyCategory',
+      memo:   memo,
+      categories: cats
     });
-    const json = await res.json();
-    return json.content?.[0]?.text?.trim() || '';
+    return result?.category || '';
   } catch { return ''; }
 }
 
