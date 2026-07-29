@@ -471,6 +471,39 @@ a { color: inherit; text-decoration: none; }
   font-size: 0.66rem;
   color: var(--muted);
 }
+.fixed-cost-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 6px;
+  border-radius: 99px;
+  background: #EEF4FB;
+  color: #3A6FA8;
+  font-size: 0.62rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.fixed-cost-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 13px;
+  border-radius: var(--radius-sm);
+  background: var(--cream);
+  border: 1.5px solid var(--stone);
+  cursor: pointer;
+}
+.fixed-cost-check input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--sage-dark);
+}
+.fixed-variable-bar {
+  display: flex;
+  height: 8px;
+  overflow: hidden;
+  border-radius: 99px;
+  background: var(--stone);
+}
 
 /* AI分類バッジ */
 .ai-badge {
@@ -834,6 +867,17 @@ a { color: inherit; text-decoration: none; }
       <select class="form-control" id="inputAccount"></select>
     </div>
 
+    <!-- 固定費（支出時のみ） -->
+    <div class="form-group" id="fixedCostGroup">
+      <label class="fixed-cost-check">
+        <input type="checkbox" id="inputIsFixed">
+        <span>
+          <span style="display:block;font-size:.84rem;font-weight:600">固定費として記録</span>
+          <span style="display:block;font-size:.68rem;color:var(--muted);margin-top:2px">チェックなしは変動費として扱います</span>
+        </span>
+      </label>
+    </div>
+
     <!-- 振替先口座（振替時のみ） -->
     <div class="form-group" id="toAccountGroup" style="display:none">
       <label class="form-label">振替先口座</label>
@@ -1018,6 +1062,16 @@ a { color: inherit; text-decoration: none; }
       <input class="form-control" type="text" id="tplMemo" placeholder="例：〇〇アパート">
     </div>
 
+    <div class="form-group" id="tplFixedCostGroup">
+      <label class="fixed-cost-check">
+        <input type="checkbox" id="tplIsFixed">
+        <span>
+          <span style="display:block;font-size:.84rem;font-weight:600">固定費として登録</span>
+          <span style="display:block;font-size:.68rem;color:var(--muted);margin-top:2px">一括登録時にもこの設定を引き継ぎます</span>
+        </span>
+      </label>
+    </div>
+
     <input type="hidden" id="tplEditId">
     <button class="submit-btn" onclick="saveTemplate()">追加する</button>
   </div>
@@ -1102,6 +1156,10 @@ a { color: inherit; text-decoration: none; }
           <span style="font-size:.78rem;color:var(--muted)">日付</span>
           <span style="font-size:.78rem;font-weight:600" id="txViewDate"></span>
         </div>
+        <div id="txViewFixedRow" style="display:none;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--stone)">
+          <span style="font-size:.78rem;color:var(--muted)">支出区分</span>
+          <span class="fixed-cost-badge">固定費</span>
+        </div>
         <div id="txViewMemoRow" style="display:flex;justify-content:space-between;padding:8px 0">
           <span style="font-size:.78rem;color:var(--muted)">メモ</span>
           <span style="font-size:.78rem;font-weight:600;text-align:right;max-width:60%" id="txViewMemo"></span>
@@ -1157,6 +1215,16 @@ a { color: inherit; text-decoration: none; }
       <div class="form-group">
         <label class="form-label">口座</label>
         <select class="form-control" id="editTxAccount"></select>
+      </div>
+
+      <div class="form-group" id="editFixedCostGroup">
+        <label class="fixed-cost-check">
+          <input type="checkbox" id="editTxIsFixed">
+          <span>
+            <span style="display:block;font-size:.84rem;font-weight:600">固定費として記録</span>
+            <span style="display:block;font-size:.68rem;color:var(--muted);margin-top:2px">チェックなしは変動費として扱います</span>
+          </span>
+        </label>
       </div>
 
       <input type="hidden" id="editTxId">
@@ -1244,6 +1312,12 @@ a { color: inherit; text-decoration: none; }
               style="padding:8px 10px;font-size:.8rem">
         <option value="">全口座</option>
       </select>
+      <select class="form-control" id="filterCostType" onchange="renderList()"
+              style="padding:8px 10px;font-size:.8rem">
+        <option value="">固定費・変動費</option>
+        <option value="fixed">固定費</option>
+        <option value="variable">変動費</option>
+      </select>
       <button onclick="resetListFilter()"
               style="padding:8px;background:var(--stone);border-radius:var(--radius-sm);
                      font-size:.78rem;color:var(--muted)">リセット</button>
@@ -1289,6 +1363,26 @@ a { color: inherit; text-decoration: none; }
     <div class="chart-summary-label">カテゴリー別支出</div>
     <div class="chart-summary-amount" id="chartExpenseTotal">¥0</div>
     <div class="chart-summary-count" id="chartExpenseCount">0件の支出</div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">固定費と変動費</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+      <div style="padding:11px 12px;background:#EEF4FB;border-radius:var(--radius-sm)">
+        <div style="font-size:.68rem;color:#3A6FA8;font-weight:700">固定費</div>
+        <div id="chartFixedTotal" style="font-size:1rem;font-weight:800;color:#3A6FA8;margin-top:3px">¥0</div>
+        <div id="chartFixedPercent" style="font-size:.65rem;color:var(--muted);margin-top:2px">0%</div>
+      </div>
+      <div style="padding:11px 12px;background:var(--sage-light);border-radius:var(--radius-sm)">
+        <div style="font-size:.68rem;color:var(--sage-dark);font-weight:700">変動費</div>
+        <div id="chartVariableTotal" style="font-size:1rem;font-weight:800;color:var(--sage-dark);margin-top:3px">¥0</div>
+        <div id="chartVariablePercent" style="font-size:.65rem;color:var(--muted);margin-top:2px">0%</div>
+      </div>
+    </div>
+    <div class="fixed-variable-bar">
+      <div id="chartFixedBar" style="width:0;background:#7696C4"></div>
+      <div id="chartVariableBar" style="width:0;background:var(--sage)"></div>
+    </div>
   </div>
 
   <div class="card" id="categoryChartCard">
@@ -2126,7 +2220,10 @@ function renderRecentTx(txs) {
           <div class="tx-icon">${cat.icon}</div>
           <div>
             <div class="tx-memo">${esc(t.memo || t.category || '---')}</div>
-            <div class="tx-cat">${esc(t.category || '')}</div>
+            <div class="tx-cat">
+              ${esc(t.category || '')}
+              ${t.type === 'expense' && t.isFixed === true ? ' <span class="fixed-cost-badge">固定費</span>' : ''}
+            </div>
           </div>
         </div>
         <div class="tx-right">
@@ -2164,6 +2261,8 @@ function selectType(type) {
   // 振替時はカテゴリ非表示・振替先口座表示
   document.getElementById('categorySection').style.display  = type === 'transfer' ? 'none' : '';
   document.getElementById('toAccountGroup').style.display   = type === 'transfer' ? '' : 'none';
+  document.getElementById('fixedCostGroup').style.display   = type === 'expense' ? '' : 'none';
+  if (type !== 'expense') document.getElementById('inputIsFixed').checked = false;
   document.getElementById('aiBadge').style.display = 'none';
 
   renderCategoryGrid(type);
@@ -2242,6 +2341,7 @@ async function submitTransaction() {
   const memo     = document.getElementById('inputMemo').value.trim();
   const account  = document.getElementById('inputAccount').value;
   const toAcct   = document.getElementById('inputToAccount').value;
+  const isFixed  = selectedType === 'expense' && document.getElementById('inputIsFixed').checked;
 
   if (!amount || amount <= 0) { showToast('金額を入力してください', 'error'); return; }
   if (!date) { showToast('日付を選択してください', 'error'); return; }
@@ -2258,6 +2358,7 @@ async function submitTransaction() {
     type:      selectedType,
     category:  selectedCategory,
     accountId: account,
+    ...(isFixed ? { isFixed: true } : {}),
     ...(selectedType === 'transfer' ? { toAccountId: toAcct } : {}),
   };
 
@@ -2276,6 +2377,7 @@ async function submitTransaction() {
   // ② フォームリセット・画面遷移（待たずに即実行）
   document.getElementById('inputAmount').value = '';
   document.getElementById('inputMemo').value   = '';
+  document.getElementById('inputIsFixed').checked = false;
   selectedCategory = '';
   renderCategoryGrid(selectedType);
   document.getElementById('aiBadge').style.display = 'none';
@@ -2525,11 +2627,23 @@ function renderCategoryReport() {
     .map(([category, amount]) => ({ category, amount }))
     .sort((a, b) => b.amount - a.amount);
   const total = rows.reduce((sum, row) => sum + row.amount, 0);
+  const fixedTotal = expenses
+    .filter(t => t.isFixed === true)
+    .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+  const variableTotal = total - fixedTotal;
+  const fixedPercent = total ? fixedTotal / total * 100 : 0;
+  const variablePercent = total ? variableTotal / total * 100 : 0;
 
   document.getElementById('chartPeriodLabel').textContent =
     `${chartYear}年${chartMonth}月（${start.slice(5)}〜${end.slice(5)}）`;
   document.getElementById('chartExpenseTotal').textContent = formatMoney(total);
   document.getElementById('chartExpenseCount').textContent = `${expenses.length}件の支出`;
+  document.getElementById('chartFixedTotal').textContent = formatMoney(fixedTotal);
+  document.getElementById('chartVariableTotal').textContent = formatMoney(variableTotal);
+  document.getElementById('chartFixedPercent').textContent = `${fixedPercent.toFixed(1)}%`;
+  document.getElementById('chartVariablePercent').textContent = `${variablePercent.toFixed(1)}%`;
+  document.getElementById('chartFixedBar').style.width = `${fixedPercent}%`;
+  document.getElementById('chartVariableBar').style.width = `${variablePercent}%`;
 
   const list = document.getElementById('categoryReportList');
   const chartCard = document.getElementById('categoryChartCard');
@@ -2950,6 +3064,7 @@ function resetListFilter() {
   document.getElementById('filterType').value     = '';
   document.getElementById('filterCategory').value = '';
   document.getElementById('filterAccount').value  = '';
+  document.getElementById('filterCostType').value = '';
   renderList();
 }
 
@@ -2959,11 +3074,18 @@ function renderList() {
   const typeFilter  = document.getElementById('filterType')?.value     || '';
   const catFilter   = document.getElementById('filterCategory')?.value || '';
   const accFilter   = document.getElementById('filterAccount')?.value  || '';
+  const costFilter  = document.getElementById('filterCostType')?.value || '';
 
   let txs = (appData?.transactions || []).filter(t => t.date >= start && t.date <= end);
   if (typeFilter) txs = txs.filter(t => t.type === typeFilter);
   if (catFilter)  txs = txs.filter(t => t.category === catFilter);
   if (accFilter)  txs = txs.filter(t => t.accountId === accFilter);
+  if (costFilter === 'fixed') {
+    txs = txs.filter(t => t.type === 'expense' && t.isFixed === true);
+  }
+  if (costFilter === 'variable') {
+    txs = txs.filter(t => t.type === 'expense' && t.isFixed !== true);
+  }
 
   // 日付降順でソート
   txs.sort((a, b) => b.date.localeCompare(a.date) || b.createdAt?.localeCompare(a.createdAt || '') || 0);
@@ -3008,7 +3130,10 @@ function renderList() {
             <div class="tx-icon">${cat.icon}</div>
             <div>
               <div class="tx-memo">${esc(t.memo || t.category || '---')}</div>
-              <div class="tx-cat">${esc(t.category || '')}${accName ? '　' + esc(accName) : ''}</div>
+              <div class="tx-cat">
+                ${esc(t.category || '')}${accName ? '　' + esc(accName) : ''}
+                ${t.type === 'expense' && t.isFixed === true ? ' <span class="fixed-cost-badge">固定費</span>' : ''}
+              </div>
             </div>
           </div>
           <div class="tx-right">
@@ -3057,6 +3182,8 @@ function openTxDetail(txId) {
   document.getElementById('txViewAccount').textContent  = accName;
   document.getElementById('txViewDate').textContent     = tx.date;
   document.getElementById('txViewMemo').textContent     = tx.memo || '---';
+  document.getElementById('txViewFixedRow').style.display =
+    tx.type === 'expense' && tx.isFixed === true ? 'flex' : 'none';
 
   document.getElementById('txDetailModal').classList.add('open');
 }
@@ -3075,6 +3202,7 @@ function switchToEditMode() {
   document.getElementById('editTxDate').value   = tx.date;
   document.getElementById('editTxAmount').value = tx.amount;
   document.getElementById('editTxMemo').value   = tx.memo || '';
+  document.getElementById('editTxIsFixed').checked = tx.type === 'expense' && tx.isFixed === true;
   editingTxCategory = tx.category || '';
 
   // 口座プルダウン
@@ -3094,6 +3222,8 @@ function renderEditCategoryGrid() {
   const type = document.getElementById('editTxType').value;
   const cats = CATEGORY_MAP[type] || CATEGORY_MAP.expense;
   document.getElementById('editCategorySection').style.display = type === 'transfer' ? 'none' : '';
+  document.getElementById('editFixedCostGroup').style.display = type === 'expense' ? '' : 'none';
+  if (type !== 'expense') document.getElementById('editTxIsFixed').checked = false;
   document.getElementById('editCategoryGrid').innerHTML = cats.map(c => `
     <button class="cat-btn ${editingTxCategory === c.label ? 'selected' : ''}"
             onclick="editingTxCategory='${c.label}';renderEditCategoryGrid()">
@@ -3108,12 +3238,18 @@ async function saveEditedTx() {
   const amount  = parseInt(document.getElementById('editTxAmount').value);
   const memo    = document.getElementById('editTxMemo').value.trim();
   const account = document.getElementById('editTxAccount').value;
+  const isFixed = type === 'expense' && document.getElementById('editTxIsFixed').checked;
 
   if (!amount || amount <= 0) { showToast('金額を入力してください', 'error'); return; }
   if (!date)                  { showToast('日付を選択してください', 'error'); return; }
   if (type !== 'transfer' && !editingTxCategory) { showToast('カテゴリを選択してください', 'error'); return; }
 
-  const updated = { id, type, date, amount, memo, category: editingTxCategory, accountId: account };
+  const updated = {
+    id, type, date, amount, memo,
+    category: editingTxCategory,
+    accountId: account,
+    isFixed
+  };
   // 楽観的更新
   const idx = appData.transactions.findIndex(t => t.id === id);
   if (idx !== -1) appData.transactions[idx] = { ...appData.transactions[idx], ...updated };
@@ -3121,6 +3257,7 @@ async function saveEditedTx() {
   showToast('更新しました ✓', 'success');
   renderList();
   renderHome();
+  if (document.getElementById('screen-chart').classList.contains('active')) renderCategoryReport();
 
   // 保留中の変更として記録（GASからの古いデータ上書きを防ぐ）
   if (!window._pendingTxChanges) window._pendingTxChanges = new Map();
@@ -3424,6 +3561,7 @@ function openTemplateModal(editId) {
       document.getElementById('tplAmount').value = tpl.amount || '';
       document.getElementById('tplMemo').value   = tpl.memo   || '';
       document.getElementById('tplAccount').value = tpl.accountId || '';
+      document.getElementById('tplIsFixed').checked = tpl.type === 'expense' && tpl.isFixed === true;
       tplEditingCategory = tpl.category || '';
     }
   } else {
@@ -3431,6 +3569,7 @@ function openTemplateModal(editId) {
     document.getElementById('tplType').value   = 'expense';
     document.getElementById('tplAmount').value = '';
     document.getElementById('tplMemo').value   = '';
+    document.getElementById('tplIsFixed').checked = false;
     tplEditingCategory = '';
   }
 
@@ -3441,6 +3580,8 @@ function openTemplateModal(editId) {
 function renderTplCategoryGrid() {
   const type = document.getElementById('tplType').value;
   const cats = CATEGORY_MAP[type] || CATEGORY_MAP.expense;
+  document.getElementById('tplFixedCostGroup').style.display = type === 'expense' ? '' : 'none';
+  if (type !== 'expense') document.getElementById('tplIsFixed').checked = false;
   document.getElementById('tplCategoryGrid').innerHTML = cats.map(c => `
     <button class="cat-btn ${tplEditingCategory === c.label ? 'selected' : ''}"
             onclick="tplEditingCategory='${c.label}';renderTplCategoryGrid()">
@@ -3455,6 +3596,7 @@ async function saveTemplate() {
   const accountId = document.getElementById('tplAccount').value;
   const memo      = document.getElementById('tplMemo').value.trim();
   const editId    = document.getElementById('tplEditId').value;
+  const isFixed   = type === 'expense' && document.getElementById('tplIsFixed').checked;
 
   if (!name)              { showToast('テンプレート名を入力してください', 'error'); return; }
   if (!tplEditingCategory){ showToast('カテゴリを選択してください', 'error'); return; }
@@ -3463,6 +3605,7 @@ async function saveTemplate() {
     id:        editId || ('tpl_' + Date.now()),
     name, type, amount, accountId, memo,
     category:  tplEditingCategory,
+    isFixed,
   };
 
   if (!appData.settings.templates) appData.settings.templates = [];
@@ -3503,397 +3646,9 @@ function renderTemplateList() {
             <div style="font-size:.88rem;font-weight:600">${esc(tpl.name)}</div>
             <div style="font-size:.7rem;color:var(--muted);margin-top:1px">
               ${formatMoney(tpl.amount)}・${esc(tpl.category)}${accName ? '・' + esc(accName) : ''}
+              ${tpl.type === 'expense' && tpl.isFixed === true ? ' <span class="fixed-cost-badge">固定費</span>' : ''}
             </div>
           </div>
         </div>
         <div style="display:flex;gap:4px">
-          <button onclick="openTemplateModal('${tpl.id}')"
-                  style="font-size:.72rem;color:var(--sage-dark);padding:4px 8px;
-                         background:var(--sage-light);border-radius:6px">編集</button>
-          <button onclick="deleteTemplate('${tpl.id}')"
-                  style="font-size:.72rem;color:var(--red);padding:4px 8px">削除</button>
-        </div>
-      </div>`;
-  }).join('');
-}
-
-function getLocalDateValue(date) {
-  const d = date || new Date();
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
-
-function getBulkTemplateState(date) {
-  if (!date) return { templates: [], pending: [], registered: [], invalid: [], monthKey: '' };
-
-  const monthKey = date.slice(0, 7);
-  const templates = (appData?.settings?.templates || []).filter(tpl => tpl.type === 'expense');
-  const transactions = appData?.transactions || [];
-  const pending = [];
-  const registered = [];
-  const invalid = [];
-
-  templates.forEach(tpl => {
-    if (!Number(tpl.amount) || Number(tpl.amount) <= 0) {
-      invalid.push(tpl);
-      return;
-    }
-    const exists = transactions.some(tx =>
-      tx.recurringTemplateId === tpl.id &&
-      (tx.recurringMonth === monthKey || String(tx.date || '').startsWith(monthKey))
-    );
-    (exists ? registered : pending).push(tpl);
-  });
-
-  return { templates, pending, registered, invalid, monthKey };
-}
-
-function openBulkTemplateModal() {
-  const expenseTemplates = (appData?.settings?.templates || []).filter(tpl => tpl.type === 'expense');
-  if (!expenseTemplates.length) {
-    showToast('支出テンプレートが登録されていません', 'error');
-    return;
-  }
-
-  document.getElementById('bulkTemplateDate').value = getLocalDateValue();
-  renderBulkTemplatePreview();
-  document.getElementById('bulkTemplateModal').classList.add('open');
-}
-
-function renderBulkTemplatePreview() {
-  const date = document.getElementById('bulkTemplateDate').value;
-  const state = getBulkTemplateState(date);
-  const total = state.pending.reduce((sum, tpl) => sum + Number(tpl.amount || 0), 0);
-  const list = document.getElementById('bulkTemplatePreviewList');
-  const registerBtn = document.getElementById('bulkTemplateRegisterBtn');
-
-  document.getElementById('bulkTemplateCount').textContent =
-    `${state.pending.length}件${state.registered.length ? `（登録済み ${state.registered.length}件を除外）` : ''}`;
-  document.getElementById('bulkTemplateTotal').textContent = formatMoney(total);
-  registerBtn.disabled = !date || state.pending.length === 0;
-  registerBtn.textContent = state.pending.length
-    ? `${state.pending.length}件をまとめて登録する`
-    : '登録できる取引がありません';
-
-  if (!date) {
-    list.innerHTML = '<div class="empty-state" style="padding:20px"><p>登録日を選択してください</p></div>';
-    return;
-  }
-
-  list.innerHTML = [
-    ...state.pending.map(tpl => renderBulkTemplateRow(tpl, 'pending')),
-    ...state.registered.map(tpl => renderBulkTemplateRow(tpl, 'registered')),
-    ...state.invalid.map(tpl => renderBulkTemplateRow(tpl, 'invalid'))
-  ].join('') || '<div class="empty-state" style="padding:20px"><p>支出テンプレートがありません</p></div>';
-}
-
-function renderBulkTemplateRow(tpl, status) {
-  const cat = getCatInfo(tpl.category, 'expense');
-  const statusLabel = status === 'registered' ? '登録済み' : status === 'invalid' ? '金額未設定' : '登録対象';
-  const statusColor = status === 'pending' ? 'var(--sage-dark)' : 'var(--muted)';
-  const opacity = status === 'pending' ? '1' : '.55';
-  return `
-    <div style="display:flex;align-items:center;gap:9px;padding:10px 2px;
-                border-bottom:1px solid var(--stone);opacity:${opacity}">
-      <span style="font-size:1.15rem">${cat.icon}</span>
-      <span style="flex:1;min-width:0">
-        <span style="display:block;font-size:.84rem;font-weight:600">${esc(tpl.name)}</span>
-        <span style="display:block;font-size:.68rem;color:var(--muted);margin-top:1px">${esc(tpl.category || '')}</span>
-      </span>
-      <span style="text-align:right">
-        <span style="display:block;font-size:.82rem;font-weight:700">${formatMoney(tpl.amount)}</span>
-        <span style="display:block;font-size:.64rem;color:${statusColor};margin-top:1px">${statusLabel}</span>
-      </span>
-    </div>`;
-}
-
-async function registerBulkTemplates() {
-  const date = document.getElementById('bulkTemplateDate').value;
-  if (!date) {
-    showToast('登録日を選択してください', 'error');
-    return;
-  }
-
-  const state = getBulkTemplateState(date);
-  if (!state.pending.length) {
-    showToast('登録できる定型支出がありません', 'error');
-    renderBulkTemplatePreview();
-    return;
-  }
-
-  const btn = document.getElementById('bulkTemplateRegisterBtn');
-  btn.disabled = true;
-  btn.textContent = '登録中...';
-
-  if (!appData.transactions) appData.transactions = [];
-  if (!window._pendingTxChanges) window._pendingTxChanges = new Map();
-
-  const now = Date.now();
-  const localTransactions = state.pending.map((tpl, index) => ({
-    id: `tx_bulk_${now}_${index}`,
-    createdAt: new Date().toISOString(),
-    date,
-    memo: tpl.memo || tpl.name || '',
-    amount: Number(tpl.amount),
-    type: 'expense',
-    category: tpl.category || 'その他',
-    accountId: tpl.accountId || '',
-    recurringTemplateId: tpl.id,
-    recurringMonth: state.monthKey
-  }));
-
-  localTransactions.forEach(tx => {
-    appData.transactions.push(tx);
-    window._pendingTxChanges.set(tx.id, { type: 'update', data: { ...tx } });
-  });
-
-  renderHome();
-  if (document.getElementById('screen-list').classList.contains('active')) renderList();
-  if (document.getElementById('screen-chart').classList.contains('active')) renderCategoryReport();
-
-  const results = await Promise.all(localTransactions.map(async tx => {
-    try {
-      const result = await postToGas({ action: 'saveTransaction', transaction: tx });
-      if (!result?.ok || !result.transaction) throw new Error(result?.error || '保存に失敗しました');
-
-      const idx = appData.transactions.findIndex(item => item.id === tx.id);
-      if (idx !== -1) appData.transactions[idx] = result.transaction;
-      window._pendingTxChanges.delete(tx.id);
-      window._pendingTxChanges.set(result.transaction.id, {
-        type: 'update',
-        data: result.transaction
-      });
-      return { ok: true };
-    } catch (error) {
-      appData.transactions = appData.transactions.filter(item => item.id !== tx.id);
-      window._pendingTxChanges.delete(tx.id);
-      console.error('[BULK TEMPLATE] 登録失敗:', tx.memo, error);
-      return { ok: false };
-    }
-  }));
-
-  const successCount = results.filter(result => result.ok).length;
-  const failureCount = results.length - successCount;
-  document.getElementById('bulkTemplateModal').classList.remove('open');
-  renderHome();
-  renderTemplateList();
-  if (document.getElementById('screen-list').classList.contains('active')) renderList();
-  if (document.getElementById('screen-chart').classList.contains('active')) renderCategoryReport();
-
-  if (successCount) {
-    showToast(`${successCount}件を一括登録しました${failureCount ? `（失敗 ${failureCount}件）` : ' ✓'}`,
-      failureCount ? 'error' : 'success');
-  } else {
-    showToast('一括登録に失敗しました', 'error');
-  }
-
-  setTimeout(() => loadDataFromGas(), 4000);
-}
-
-// 入力画面からテンプレートを呼び出す
-function openTemplatePicker() {
-  const tpls = appData?.settings?.templates || [];
-  const el   = document.getElementById('templatePickerList');
-
-  if (!tpls.length) {
-    el.innerHTML = '<div class="empty-state"><p>テンプレートが登録されていません<br>設定画面から追加してください</p></div>';
-  } else {
-    el.innerHTML = tpls.map(tpl => {
-      const cat     = getCatInfo(tpl.category, tpl.type);
-      const accName = (appData?.accounts || []).find(a => a.id === tpl.accountId)?.name || '';
-      return `
-        <div onclick="applyTemplate('${tpl.id}')"
-             style="display:flex;align-items:center;gap:10px;padding:12px 4px;
-                    border-bottom:1px solid var(--stone);cursor:pointer;
-                    -webkit-tap-highlight-color:transparent">
-          <div style="width:40px;height:40px;border-radius:var(--radius-sm);
-                      background:var(--stone);display:flex;align-items:center;
-                      justify-content:center;font-size:1.3rem;flex-shrink:0">${cat.icon}</div>
-          <div style="flex:1">
-            <div style="font-size:.9rem;font-weight:600">${esc(tpl.name)}</div>
-            <div style="font-size:.72rem;color:var(--muted);margin-top:1px">
-              ${formatMoney(tpl.amount)}・${esc(tpl.category)}${accName ? '・' + esc(accName) : ''}
-            </div>
-          </div>
-          <span style="color:var(--muted);font-size:1.1rem">›</span>
-        </div>`;
-    }).join('');
-  }
-
-  document.getElementById('templatePickerModal').classList.add('open');
-}
-
-// テンプレートを入力フォームに反映
-function applyTemplate(tplId) {
-  const tpl = (appData?.settings?.templates || []).find(t => t.id === tplId);
-  if (!tpl) return;
-
-  selectType(tpl.type || 'expense');
-  document.getElementById('inputAmount').value = tpl.amount || '';
-  document.getElementById('inputMemo').value   = tpl.memo || tpl.name || '';
-  selectedCategory = tpl.category || '';
-  renderCategoryGrid(tpl.type || 'expense');
-
-  if (tpl.accountId) {
-    const accEl = document.getElementById('inputAccount');
-    if ([...accEl.options].some(o => o.value === tpl.accountId)) {
-      accEl.value = tpl.accountId;
-    }
-  }
-
-  // AI分類バッジを非表示
-  document.getElementById('aiBadge').style.display = 'none';
-
-  document.getElementById('templatePickerModal').classList.remove('open');
-  showToast('「' + tpl.name + '」を呼び出しました', 'success');
-}
-
-// ============================================================
-// 設定画面初期化（showScreen('settings') から呼ぶ）
-// ============================================================
-function initSettingsScreen() {
-  loadCustomCategories();
-  renderCategorySettings();
-  renderSpecialFeeList();
-  renderTemplateList();
-  renderAccountSettings();
-  loadSettingsLocal();
-}
-
-// ============================================================
-// カテゴリ管理
-// ============================================================
-
-let currentCatTab = 'expense';
-
-// カテゴリをGASのsettingsから読み込み・CATEGORY_MAPに反映
-function loadCustomCategories() {
-  const customCats = appData?.settings?.customCategories;
-  if (!customCats) return;
-  if (customCats.expense && customCats.expense.length) {
-    CATEGORY_MAP.expense = customCats.expense;
-  }
-  if (customCats.income && customCats.income.length) {
-    CATEGORY_MAP.income = customCats.income;
-  }
-}
-
-// 設定画面のカテゴリ一覧を描画
-function renderCategorySettings() {
-  renderCatList('expense');
-  renderCatList('income');
-}
-
-function renderCatList(type) {
-  const el   = document.getElementById(type === 'expense' ? 'expenseCatList' : 'incomeCatList');
-  const cats = CATEGORY_MAP[type] || [];
-
-  el.innerHTML = cats.map((cat, idx) => {
-    const isDefault = !!cat.key && !cat.key.startsWith('custom_');
-    return `
-      <div style="display:flex;align-items:center;gap:8px;padding:8px 0;
-                  border-bottom:1px solid var(--stone)">
-        <span style="font-size:1.3rem;width:32px;text-align:center">${cat.icon}</span>
-        <span style="flex:1;font-size:.88rem;font-weight:500">${esc(cat.label)}</span>
-        ${isDefault
-          ? '<span style="font-size:.65rem;color:var(--muted);padding:2px 6px;background:var(--stone);border-radius:99px">デフォルト</span>'
-          : `<button onclick="openCatModal('${type}','${cat.key}')"
-                     style="font-size:.72rem;color:var(--sage-dark);padding:3px 8px;
-                            background:var(--sage-light);border-radius:6px">編集</button>
-             <button onclick="deleteCategory('${type}','${cat.key}')"
-                     style="font-size:.72rem;color:var(--red);padding:3px 6px">削除</button>`
-        }
-      </div>`;
-  }).join('');
-}
-
-function switchCatTab(type) {
-  currentCatTab = type;
-  document.getElementById('catListExpense').style.display = type === 'expense' ? '' : 'none';
-  document.getElementById('catListIncome').style.display  = type === 'income'  ? '' : 'none';
-  document.querySelectorAll('#catTabExpense,#catTabIncome').forEach(t => t.classList.remove('active'));
-  document.getElementById(type === 'expense' ? 'catTabExpense' : 'catTabIncome').classList.add('active');
-}
-
-// モーダルを開く
-function openCatModal(type, editKey) {
-  document.getElementById('catEditType').value = type;
-  document.getElementById('catEditKey').value  = editKey || '';
-  document.getElementById('catModalTitle').textContent = editKey ? 'カテゴリを編集' : 'カテゴリを追加';
-
-  if (editKey) {
-    const cat = (CATEGORY_MAP[type] || []).find(c => c.key === editKey);
-    if (cat) {
-      document.getElementById('catName').value      = cat.label;
-      document.getElementById('catIconInput').value = cat.icon;
-      document.getElementById('catIconPreview').textContent = cat.icon;
-    }
-  } else {
-    document.getElementById('catName').value      = '';
-    document.getElementById('catIconInput').value = '';
-    document.getElementById('catIconPreview').textContent = '💫';
-  }
-  document.getElementById('catModal').classList.add('open');
-}
-
-function selectCatIcon(icon) {
-  document.getElementById('catIconInput').value = icon;
-  document.getElementById('catIconPreview').textContent = icon;
-}
-
-// カテゴリを保存
-async function saveCategory() {
-  const type    = document.getElementById('catEditType').value;
-  const editKey = document.getElementById('catEditKey').value;
-  const label   = document.getElementById('catName').value.trim();
-  const icon    = document.getElementById('catIconInput').value.trim() || '💫';
-
-  if (!label) { showToast('カテゴリ名を入力してください', 'error'); return; }
-
-  const key = editKey || ('custom_' + Date.now());
-  const cat = { key, label, icon };
-
-  const cats = [...(CATEGORY_MAP[type] || [])];
-  const idx  = cats.findIndex(c => c.key === key);
-  if (idx !== -1) cats[idx] = cat;
-  else            cats.push(cat);
-
-  // CATEGORY_MAPを即時更新
-  CATEGORY_MAP[type] = cats;
-
-  // GASに保存
-  const customCategories = {
-    expense: CATEGORY_MAP.expense,
-    income:  CATEGORY_MAP.income,
-  };
-  document.getElementById('catModal').classList.remove('open');
-  renderCategorySettings();
-  showToast((editKey ? '更新' : '追加') + 'しました ✓', 'success');
-  saveSettingsWithGuard({ customCategories });
-}
-
-// カテゴリを削除
-async function deleteCategory(type, key) {
-  const cat = (CATEGORY_MAP[type] || []).find(c => c.key === key);
-  if (!confirm('「' + (cat?.label || key) + '」を削除しますか？')) return;
-
-  CATEGORY_MAP[type] = (CATEGORY_MAP[type] || []).filter(c => c.key !== key);
-
-  const customCategories = {
-    expense: CATEGORY_MAP.expense,
-    income:  CATEGORY_MAP.income,
-  };
-  renderCategorySettings();
-  showToast('削除しました', 'success');
-  saveSettingsWithGuard({ customCategories });
-}
-
-function setSyncState(state) {
-  const dot   = document.getElementById('syncDot');
-  const label = document.getElementById('syncLabel');
-  dot.className = 'sync-dot ' + (state === 'ok' ? '' : state);
-  label.textContent = { ok:'同期済み', syncing:'同期中...', error:'エラー' }[state] || '';
-}
-</script>
-
-</body>
-</html>
+          <button onclick="openTemplateModal
