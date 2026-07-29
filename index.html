@@ -397,6 +397,81 @@ a { color: inherit; text-decoration: none; }
   font-weight: 600;
 }
 
+/* ============================================================
+   ④ 月別カテゴリー集計
+   ============================================================ */
+.chart-summary {
+  text-align: center;
+  padding: 18px 16px;
+}
+.chart-summary-label {
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.chart-summary-amount {
+  font-size: 2rem;
+  line-height: 1.2;
+  font-weight: 800;
+  color: var(--charcoal);
+}
+.chart-summary-count {
+  margin-top: 5px;
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+.category-chart-wrap {
+  position: relative;
+  width: 100%;
+  height: 230px;
+}
+.category-report-row {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 11px 2px;
+  border-bottom: 1px solid var(--stone);
+  text-align: left;
+}
+.category-report-row:last-child { border-bottom: none; }
+.category-report-icon {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 1.05rem;
+}
+.category-report-name {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.category-report-bar {
+  height: 5px;
+  margin-top: 6px;
+  background: var(--stone);
+  border-radius: 99px;
+  overflow: hidden;
+}
+.category-report-bar-fill {
+  height: 100%;
+  border-radius: 99px;
+}
+.category-report-value { text-align: right; }
+.category-report-amount {
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+.category-report-percent {
+  margin-top: 2px;
+  font-size: 0.66rem;
+  color: var(--muted);
+}
+
 /* AI分類バッジ */
 .ai-badge {
   display: inline-flex;
@@ -1164,12 +1239,34 @@ a { color: inherit; text-decoration: none; }
 </div>
 
 <!-- ============================================================
-     ④ グラフ（骨格のみ・次フェーズで実装）
+     ④ 月別カテゴリー集計
      ============================================================ -->
 <div class="screen" id="screen-chart">
-  <div class="empty-state" style="padding-top:60px">
-    <div class="icon">📊</div>
-    <p>グラフ・レポートは<br>次のアップデートで実装予定です</p>
+  <div class="period-selector">
+    <button class="period-nav-btn" onclick="chartChangePeriod(-1)">‹</button>
+    <span id="chartPeriodLabel" style="flex:1;text-align:center"></span>
+    <button class="period-nav-btn" onclick="chartChangePeriod(1)">›</button>
+  </div>
+
+  <div class="card chart-summary">
+    <div class="chart-summary-label">カテゴリー別支出</div>
+    <div class="chart-summary-amount" id="chartExpenseTotal">¥0</div>
+    <div class="chart-summary-count" id="chartExpenseCount">0件の支出</div>
+  </div>
+
+  <div class="card" id="categoryChartCard">
+    <div class="card-title">支出の内訳</div>
+    <div class="category-chart-wrap">
+      <canvas id="categoryExpenseChart"></canvas>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="section-title" style="margin-bottom:4px">
+      <span>カテゴリー別</span>
+      <span style="font-size:.68rem;color:var(--muted);font-weight:500">金額の多い順</span>
+    </div>
+    <div id="categoryReportList"></div>
   </div>
 </div>
 
@@ -1511,6 +1608,9 @@ let selectedColor    = '#A8C3A0';
 let currentYear      = new Date().getFullYear();
 let currentMonth     = new Date().getMonth() + 1;
 let autoClassifyTimer = null;
+let chartYear        = currentYear;
+let chartMonth       = currentMonth;
+let categoryExpenseChart = null;
 
 // 集計開始日の設定を考慮して「今日が属する期間」の年月を計算する
 // 例：開始日=25、今日=6/30 の場合 → 期間は6/25〜7/24 なので month は7を返す
@@ -1541,6 +1641,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   const initPeriod = getCurrentPeriodYM();
   currentYear  = initPeriod.year;
   currentMonth = initPeriod.month;
+  chartYear    = initPeriod.year;
+  chartMonth   = initPeriod.month;
 
   if (gasUrl) {
     await loadDataFromGas();
@@ -1687,6 +1789,7 @@ async function loadDataFromGas() {
       renderAccountSelects();
       renderAccountSettings();
       if (document.getElementById('screen-list').classList.contains('active')) renderList();
+      if (document.getElementById('screen-chart').classList.contains('active')) renderCategoryReport();
       setSyncState('ok');
       console.log('%c[LOAD] loadDataFromGas 完了', 'color:blue;font-weight:bold');
     } else {
@@ -2353,6 +2456,129 @@ function changePeriod(dir) {
   renderHome();
 }
 
+// ============================================================
+// 月別カテゴリー集計
+// ============================================================
+const CHART_COLORS = [
+  '#2E6B4F', '#E0A899', '#6F9E8B', '#D8B35C', '#7696C4',
+  '#B97A8E', '#88A75D', '#A78AC4', '#D27E5B', '#7D8C91',
+  '#4F8F9D', '#C09262', '#8E7968', '#B0A6A0'
+];
+
+function initChartScreen() {
+  chartYear  = currentYear;
+  chartMonth = currentMonth;
+  renderCategoryReport();
+}
+
+function chartChangePeriod(dir) {
+  chartMonth += dir;
+  if (chartMonth > 12) { chartMonth = 1; chartYear++; }
+  if (chartMonth < 1)  { chartMonth = 12; chartYear--; }
+  renderCategoryReport();
+}
+
+function renderCategoryReport() {
+  const { start, end } = getPeriodRange(chartYear, chartMonth);
+  const expenses = (appData?.transactions || []).filter(t =>
+    t.type === 'expense' && t.date >= start && t.date <= end
+  );
+  const totals = new Map();
+  expenses.forEach(t => {
+    const label = t.category || '未分類';
+    totals.set(label, (totals.get(label) || 0) + (Number(t.amount) || 0));
+  });
+
+  const rows = [...totals.entries()]
+    .map(([category, amount]) => ({ category, amount }))
+    .sort((a, b) => b.amount - a.amount);
+  const total = rows.reduce((sum, row) => sum + row.amount, 0);
+
+  document.getElementById('chartPeriodLabel').textContent =
+    `${chartYear}年${chartMonth}月（${start.slice(5)}〜${end.slice(5)}）`;
+  document.getElementById('chartExpenseTotal').textContent = formatMoney(total);
+  document.getElementById('chartExpenseCount').textContent = `${expenses.length}件の支出`;
+
+  const list = document.getElementById('categoryReportList');
+  const chartCard = document.getElementById('categoryChartCard');
+  if (!rows.length) {
+    list.innerHTML = '<div class="empty-state"><div class="icon">📊</div><p>この月の支出はありません</p></div>';
+    chartCard.style.display = 'none';
+    if (categoryExpenseChart) {
+      categoryExpenseChart.destroy();
+      categoryExpenseChart = null;
+    }
+    return;
+  }
+
+  chartCard.style.display = '';
+  list.innerHTML = rows.map((row, index) => {
+    const cat = getCatInfo(row.category, 'expense');
+    const percent = total ? row.amount / total * 100 : 0;
+    const color = CHART_COLORS[index % CHART_COLORS.length];
+    return `
+      <button class="category-report-row"
+              onclick="openCategoryTransactions(decodeURIComponent('${encodeURIComponent(row.category).replace(/'/g, '%27')}'))">
+        <span class="category-report-icon" style="background:${color}20">${cat.icon}</span>
+        <span>
+          <span class="category-report-name">${esc(row.category)}</span>
+          <span class="category-report-bar">
+            <span class="category-report-bar-fill" style="display:block;width:${percent}%;background:${color}"></span>
+          </span>
+        </span>
+        <span class="category-report-value">
+          <span class="category-report-amount">${formatMoney(row.amount)}</span>
+          <span class="category-report-percent">${percent.toFixed(1)}%</span>
+        </span>
+      </button>`;
+  }).join('');
+
+  if (categoryExpenseChart) categoryExpenseChart.destroy();
+  const ctx = document.getElementById('categoryExpenseChart');
+  categoryExpenseChart = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: rows.map(row => row.category),
+      datasets: [{
+        data: rows.map(row => row.amount),
+        backgroundColor: rows.map((_, i) => CHART_COLORS[i % CHART_COLORS.length]),
+        borderColor: '#FFFFFF',
+        borderWidth: 3,
+        hoverOffset: 5
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      cutout: '63%',
+      plugins: {
+        legend: {
+          position: 'bottom',
+          labels: { usePointStyle: true, boxWidth: 8, padding: 14, font: { size: 11 } }
+        },
+        tooltip: {
+          callbacks: {
+            label: context => ` ${context.label}: ${formatMoney(context.raw)}`
+          }
+        }
+      }
+    }
+  });
+}
+
+function openCategoryTransactions(category) {
+  currentYear = chartYear;
+  currentMonth = chartMonth;
+  showScreen('list');
+  document.getElementById('filterType').value = 'expense';
+  const categorySelect = document.getElementById('filterCategory');
+  if (![...categorySelect.options].some(option => option.value === category)) {
+    categorySelect.add(new Option(category, category));
+  }
+  categorySelect.value = category;
+  renderList();
+}
+
 function calcAccountBalance(acc) {
   if (!appData?.transactions) return acc.initialBalance || 0;
   const txs = appData.transactions;
@@ -2427,6 +2653,7 @@ function showScreen(name) {
 
   if (name === 'home') renderHome();
   if (name === 'list') initListScreen();
+  if (name === 'chart') initChartScreen();
   if (name === 'settings') initSettingsScreen();
 }
 
