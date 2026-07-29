@@ -3525,7 +3525,12 @@ renderHome();
 if (document.getElementById('screen-list').classList.contains('active')) renderList();
 if (document.getElementById('screen-chart').classList.contains('active')) renderCategoryReport();
 
-const results = await Promise.all(localTransactions.map(async tx => {
+let successCount = 0;
+let failureCount = 0;
+
+for (let index = 0; index < localTransactions.length; index++) {
+const tx = localTransactions[index];
+btn.textContent = `登録中...（${index + 1}/${localTransactions.length}）`;
 try {
 const result = await postToGas({ action: 'saveTransaction', transaction: tx });
 if (!result?.ok || !result.transaction) throw new Error(result?.error || '保存に失敗しました');
@@ -3533,21 +3538,15 @@ if (!result?.ok || !result.transaction) throw new Error(result?.error || '保存
 const idx = appData.transactions.findIndex(item => item.id === tx.id);
 if (idx !== -1) appData.transactions[idx] = result.transaction;
 window._pendingTxChanges.delete(tx.id);
-window._pendingTxChanges.set(result.transaction.id, {
-type: 'update',
-data: result.transaction
-});
-return { ok: true };
+successCount++;
 } catch (error) {
 appData.transactions = appData.transactions.filter(item => item.id !== tx.id);
 window._pendingTxChanges.delete(tx.id);
 console.error('[BULK TEMPLATE] 登録失敗:', tx.memo, error);
-return { ok: false };
+failureCount++;
 }
-}));
+}
 
-const successCount = results.filter(result => result.ok).length;
-const failureCount = results.length - successCount;
 document.getElementById('bulkTemplateModal').classList.remove('open');
 renderHome();
 renderTemplateList();
@@ -3555,13 +3554,15 @@ if (document.getElementById('screen-list').classList.contains('active')) renderL
 if (document.getElementById('screen-chart').classList.contains('active')) renderCategoryReport();
 
 if (successCount) {
+await loadDataFromGas();
+}
+
+if (successCount) {
 showToast(`${successCount}件を一括登録しました${failureCount ? `（失敗 ${failureCount}件）` : ' ✓'}`,
 failureCount ? 'error' : 'success');
 } else {
 showToast('一括登録に失敗しました', 'error');
 }
-
-setTimeout(() => loadDataFromGas(), 4000);
 }
 
 function openTemplatePicker() {
