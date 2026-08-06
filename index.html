@@ -1617,6 +1617,9 @@ let autoClassifyTimer = null;
 let chartYear        = currentYear;
 let chartMonth       = currentMonth;
 let categoryExpenseChart = null;
+let appDataFromCache = false;
+let syncRetryTimer   = null;
+const DATA_CACHE_KEY = 'kakeibo_data_cache_v1';
 
 function getCurrentPeriodYM() {
 const today     = new Date();
@@ -1675,6 +1678,39 @@ const startDay = localStorage.getItem('kakeibo_start_day') || '1';
 document.getElementById('startDaySelect').value = startDay;
 }
 
+function loadDataCache() {
+try {
+const raw = localStorage.getItem(DATA_CACHE_KEY);
+if (!raw) return null;
+const cached = JSON.parse(raw);
+return cached && Array.isArray(cached.transactions) ? cached : null;
+} catch (error) {
+console.warn('[CACHE] 読み込み失敗:', error);
+return null;
+}
+}
+
+function saveDataCache(data) {
+try {
+localStorage.setItem(DATA_CACHE_KEY, JSON.stringify(data));
+} catch (error) {
+console.warn('[CACHE] 保存失敗:', error);
+}
+}
+
+function renderAppDataViews() {
+loadCustomCategories();
+renderHome();
+renderAccountSelects();
+renderAccountSettings();
+if (document.getElementById('screen-list').classList.contains('active')) renderList();
+if (document.getElementById('screen-chart').classList.contains('active')) renderCategoryReport();
+}
+
+function waitForRetry(ms) {
+return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 function gasJsonp(params, timeoutMs) {
 return new Promise((resolve, reject) => {
 const cbName = 'cb_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
@@ -1706,16 +1742,46 @@ document.head.appendChild(script);
 });
 }
 
-async function loadDataFromGas() {
+async function loadDataFromGas(options) {
+const silent = options?.silent === true;
 console.log('%c[LOAD] loadDataFromGas 開始', 'color:blue;font-weight:bold');
 if (!gasUrl) { console.log('[LOAD] gasUrl未設定のため中断'); hideLoading(); return; }
 setSyncState('syncing');
-try {
 
-const json = await gasJsonp({
+if (!appData) {
+const cached = loadDataCache();
+if (cached) {
+appData = cached;
+appDataFromCache = true;
+renderAppDataViews();
+setSyncState('cached');
+hideLoading();
+if (!silent) showToast('前回データを表示して最新情報を同期中です', '');
+}
+}
+
+try {
+let json = null;
+let lastError = null;
+const timeouts = [15000, 30000];
+for (let attempt = 0; attempt < timeouts.length; attempt++) {
+try {
+json = await gasJsonp({
 action: 'getData',
-_t: Date.now() + '_' + Math.random().toString(36).slice(2, 6)
-}, 15000);
+_t: Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+attempt: attempt + 1
+}, timeouts[attempt]);
+break;
+} catch (error) {
+lastError = error;
+if (attempt < timeouts.length - 1) {
+setSyncState('retrying');
+if (!silent) showToast('接続が遅いため自動で再試行します', '');
+await waitForRetry(1500);
+}
+}
+}
+if (!json) throw lastError || new Error('取得失敗');
 console.log('[LOAD] JSONP取得成功');
 
 if (json && json.ok) {
@@ -1749,8 +1815,9 @@ freshData.transactions = freshData.transactions.filter(t => t.id !== txId);
 console.log('[LOAD] 保留中の変更なし');
 }
 
-const currentSettings = appData?.settings;
+const currentSettings = !appDataFromCache && appData?.updatedAt ? appData.settings : null;
 appData = freshData;
+appDataFromCache = false;
 if (currentSettings) {
 
 appData.settings = currentSettings;
@@ -1758,12 +1825,12 @@ console.log('[LOAD] settingsはローカル状態を維持（上書きしない�
 }
 console.log('%c[LOAD] appData更新後の取引件数:', 'color:green;font-weight:bold', appData.transactions.length);
 
-loadCustomCategories();
-renderHome();
-renderAccountSelects();
-renderAccountSettings();
-if (document.getElementById('screen-list').classList.contains('active')) renderList();
-if (document.getElementById('screen-chart').classList.contains('active')) renderCategoryReport();
+saveDataCache(appData);
+renderAppDataViews();
+if (syncRetryTimer) {
+clearTimeout(syncRetryTimer);
+syncRetryTimer = null;
+}
 setSyncState('ok');
 console.log('%c[LOAD] loadDataFromGas 完了', 'color:blue;font-weight:bold');
 } else {
@@ -1773,15 +1840,21 @@ throw new Error((json && json.error) || '取得失敗');
 } catch (e) {
 console.error('%c[LOAD] 例外発生:', 'color:red;font-weight:bold', e);
 setSyncState('error');
-showToast('接続エラー。設定画面でGAS URLを確認してください。', 'error');
+if (!silent) showToast(appData ? '接続エラーのため前回データを表示中です' : '接続エラー。GAS URLを確認してください。', 'error');
 if (!appData) {
 appData = {
 transactions: [], accounts: [], settings: {},
 categoryLearning: {}, receipts: []
 };
 }
-renderHome();
-renderAccountSelects();
+renderAppDataViews();
+setSyncState(appDataFromCache ? 'cached' : 'error');
+if (!syncRetryTimer) {
+syncRetryTimer = setTimeout(() => {
+syncRetryTimer = null;
+loadDataFromGas({ silent: true });
+}, 30000);
+}
 } finally {
 hideLoading();
 }
@@ -3751,8 +3824,15 @@ saveSettingsWithGuard({ customCategories });
 function setSyncState(state) {
 const dot   = document.getElementById('syncDot');
 const label = document.getElementById('syncLabel');
-dot.className = 'sync-dot ' + (state === 'ok' ? '' : state);
-label.textContent = { ok:'同期済み', syncing:'同期中...', error:'エラー' }[state] || '';
+const dotState = state === 'retrying' || state === 'cached' ? 'syncing' : state;
+dot.className = 'sync-dot ' + (dotState === 'ok' ? '' : dotState);
+label.textContent = {
+ok:'同期済み',
+syncing:'同期中...',
+retrying:'再試行中...',
+cached:'前回データ',
+error:'エラー'
+}[state] || '';
 }
 </script>
 
